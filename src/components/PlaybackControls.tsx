@@ -26,7 +26,7 @@ export function PlaybackControls({
   onSetSpeed,
 }: Props) {
   return (
-    <div className="flex items-center gap-4 px-4 py-3 bg-slate-800/80 border-t border-slate-700 backdrop-blur">
+    <div className="flex items-center gap-4 px-4 py-3 bg-white border-t border-gray-200">
       {/* Play / Pause */}
       <Button
         variant="icon-round"
@@ -55,7 +55,7 @@ export function PlaybackControls({
           onChange={(e) => onSeek(parseInt(e.target.value))}
           className="w-full h-1.5 accent-sky-500 cursor-pointer"
         />
-        <div className="flex justify-between text-xs text-slate-500 font-mono">
+        <div className="flex justify-between text-xs text-gray-400 font-mono">
           <span>t = {currentTime.toFixed(3)}s</span>
           <span>
             frame {frameIndex + 1} / {totalFrames}
@@ -65,7 +65,7 @@ export function PlaybackControls({
 
       {/* Speed selector */}
       <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="text-xs text-slate-400 mr-1 hidden sm:inline">Speed</span>
+        <span className="text-xs text-gray-400 mr-1 hidden sm:inline">Speed</span>
         {PLAYBACK_SPEEDS.map((s) => (
           <Button
             key={s}
