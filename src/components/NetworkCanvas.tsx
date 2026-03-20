@@ -172,15 +172,15 @@ interface NodeObjectProps {
 
 function NodeObject({
   node,
-  nextNode,
-  alpha,
+  nextNode: _nextNode,
+  alpha: _alpha,
   selected,
   highlighted,
   dimmed,
   dim,
   onClick,
 }: NodeObjectProps) {
-  const pos = interpPos(node, nextNode, alpha, dim)
+  const pos = interpPos(node, undefined, 0, dim)
   const inactive = !node.active
 
   const color = inactive
@@ -202,7 +202,7 @@ function NodeObject({
 
   const rotation =
     node.nodeType === 'air' || node.nodeType === 'vehicle'
-      ? headingRotation(node, nextNode, dim)
+      ? headingRotation(node, _nextNode, dim)
       : new THREE.Euler(0, 0, 0)
 
   const label =
@@ -311,17 +311,17 @@ function LinkObject({
   link,
   nodeA,
   nodeB,
-  nextA,
-  nextB,
-  alpha,
+  nextA: _nextA,
+  nextB: _nextB,
+  alpha: _alpha,
   selected,
   highlighted,
   dimmed,
   dim,
   onClick,
 }: LinkObjectProps) {
-  const posA = interpPos(nodeA, nextA, alpha, dim)
-  const posB = interpPos(nodeB, nextB, alpha, dim)
+  const posA = interpPos(nodeA, undefined, 0, dim)
+  const posB = interpPos(nodeB, undefined, 0, dim)
   const color = lc(link)
   const opacity = dimmed ? 0.06 : 1
   const isLos = link.condition === 'LOS'
@@ -359,7 +359,7 @@ function LinkObject({
           depthOffset={-2}
           raycast={() => null}
         >
-          {`${link.condition}  ${link.rxPower.toFixed(1)} dBm`}
+          {`${link.condition}${link.sinr !== undefined ? `  ${link.sinr.toFixed(1)} dB` : ''}`}
         </Text>
       )}
 
@@ -486,9 +486,9 @@ function Scene({
         <OrbitControls target={[sceneCX, 0, sceneCY]} makeDefault />
       )}
 
-      <ambientLight intensity={0.7} />
+      <ambientLight intensity={1.0} />
       <directionalLight position={[300, 400, 200]} intensity={1.2} />
-      <pointLight position={[sceneCX, 120, sceneCY]} intensity={0.6} color="#7dd3fc" />
+      <pointLight position={[sceneCX, 120, sceneCY]} intensity={0.4} color="#ffffff" />
 
       {/* Ground plane */}
       <mesh position={[sceneCX, -0.15, sceneCY]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -501,10 +501,10 @@ function Scene({
         args={[500, 500]}
         cellSize={25}
         cellThickness={0.4}
-        cellColor="#1e3a5f"
+        cellColor="#9ca3af"
         sectionSize={100}
         sectionThickness={0.8}
-        sectionColor="#2563eb"
+        sectionColor="#374151"
         fadeDistance={600}
         fadeStrength={1}
       />
@@ -587,7 +587,7 @@ export function NetworkCanvas({
 }: Props) {
   return (
     <Canvas
-      style={{ background: '#020917' }}
+      style={{ background: '#ffffff' }}
       onPointerMissed={() => {
         onSelectNode(null)
         onSelectLink(null)

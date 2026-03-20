@@ -1,31 +1,35 @@
 import { useMemo } from 'react'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
-import type { SimFrame } from '../../types'
+import type { SimFrame, BuildingState } from '../../types'
 import { linkKey } from './utils/linkColors'
 import { NodeObject } from './NodeObject'
 import { LinkObject } from './LinkObject'
+import { BuildingObject } from './BuildingObject'
 import { SceneEnvironment } from './SceneEnvironment'
 
 interface Props {
   frame: SimFrame
   nextFrame: SimFrame | null
-  alpha: number
+  /** Shared mutable ref — updated every RAF tick, never causes React re-renders */
+  alphaRef: React.MutableRefObject<number>
   selectedNode: number | null
   selectedLink: string | null
   onSelectNode: (id: number | null) => void
   onSelectLink: (key: string | null) => void
   dimensions: 1 | 2 | 3
+  buildings: BuildingState[]
 }
 
 export function Scene({
   frame,
   nextFrame,
-  alpha,
+  alphaRef,
   selectedNode,
   selectedLink,
   onSelectNode,
   onSelectLink,
   dimensions,
+  buildings,
 }: Props) {
   const { nodes, links } = frame
 
@@ -110,6 +114,12 @@ export function Scene({
 
       <SceneEnvironment sceneCX={sceneCX} sceneCY={sceneCY} />
 
+      {/* Buildings */}
+      {buildings.map((b) => (
+        <BuildingObject key={b.id} building={b} dim={dimensions} />
+      ))}
+
+      {/* Links (rendered before nodes so nodes draw on top) */}
       {links.map((l) => {
         const nA = nodeById.get(l.nodeA),
           nB = nodeById.get(l.nodeB)
@@ -125,7 +135,7 @@ export function Scene({
             nodeB={nB}
             nextA={nextNodeById.get(l.nodeA)}
             nextB={nextNodeById.get(l.nodeB)}
-            alpha={alpha}
+            alphaRef={alphaRef}
             selected={sel}
             highlighted={hi}
             dimmed={hasSelection && !sel && !hi}
@@ -138,6 +148,7 @@ export function Scene({
         )
       })}
 
+      {/* Nodes */}
       {nodes.map((n) => {
         const sel = n.id === selectedNode
         const hi = highlightedNodes.has(n.id)
@@ -146,7 +157,7 @@ export function Scene({
             key={n.id}
             node={n}
             nextNode={nextNodeById.get(n.id)}
-            alpha={alpha}
+            alphaRef={alphaRef}
             selected={sel}
             highlighted={hi}
             dimmed={hasSelection && !sel && !hi}

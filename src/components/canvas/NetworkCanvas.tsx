@@ -1,11 +1,13 @@
 import { Canvas } from '@react-three/fiber'
-import type { SimFrame } from '../../types'
+import type { SimFrame, BuildingState } from '../../types'
 import { Scene } from './Scene'
 
 interface Props {
   frame: SimFrame
   nextFrame: SimFrame | null
-  alpha: number
+  /** Shared mutable ref — updated every RAF tick, read inside useFrame */
+  frameAlphaRef: React.MutableRefObject<number>
+  buildings: BuildingState[]
   selectedNode: number | null
   selectedLink: string | null
   onSelectNode: (id: number | null) => void
@@ -16,7 +18,8 @@ interface Props {
 export function NetworkCanvas({
   frame,
   nextFrame,
-  alpha,
+  frameAlphaRef,
+  buildings,
   selectedNode,
   selectedLink,
   onSelectNode,
@@ -25,7 +28,8 @@ export function NetworkCanvas({
 }: Props) {
   return (
     <Canvas
-      style={{ background: '#020917' }}
+      style={{ background: '#ffffff' }}
+      frameloop="always"
       onPointerMissed={() => {
         onSelectNode(null)
         onSelectLink(null)
@@ -34,7 +38,8 @@ export function NetworkCanvas({
       <Scene
         frame={frame}
         nextFrame={nextFrame}
-        alpha={alpha}
+        alphaRef={frameAlphaRef}
+        buildings={buildings}
         selectedNode={selectedNode}
         selectedLink={selectedLink}
         onSelectNode={onSelectNode}
