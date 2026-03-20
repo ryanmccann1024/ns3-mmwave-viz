@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text, Line } from '@react-three/drei'
 import type { NodeState } from '../../types'
@@ -15,7 +17,8 @@ import { NodeShape } from './NodeShape'
 interface Props {
   node: NodeState
   nextNode: NodeState | undefined
-  alpha: number
+  /** Shared mutable ref — updated every RAF tick without React re-renders */
+  alphaRef: React.MutableRefObject<number>
   selected: boolean
   highlighted: boolean
   dimmed: boolean
@@ -25,15 +28,15 @@ interface Props {
 
 export function NodeObject({
   node,
-  nextNode,
-  alpha,
+  nextNode: _nextNode,
+  alphaRef: _alphaRef,
   selected,
   highlighted,
   dimmed,
   dim,
   onClick,
 }: Props) {
-  const pos = interpPos(node, nextNode, alpha, dim)
+  const groupRef = useRef<THREE.Group>(null)
   const inactive = !node.active
   const size = NODE_SIZES[node.nodeType]
 
@@ -57,14 +60,21 @@ export function NodeObject({
 
   const rotation =
     node.nodeType === 'air' || node.nodeType === 'vehicle'
-      ? headingRotation(node, nextNode, dim)
+      ? headingRotation(node, _nextNode, dim)
       : new THREE.Euler(0, 0, 0)
 
   const label = NODE_LABELS[node.nodeType]
 
+  // Imperatively update position every frame — avoids 60fps React re-renders
+  useFrame(() => {
+    if (!groupRef.current) return
+    const [px, py, pz] = interpPos(node, undefined, 0, dim)
+    groupRef.current.position.set(px, py, pz)
+  })
+
   return (
     <group
-      position={pos}
+      ref={groupRef}
       onClick={(e) => {
         e.stopPropagation()
         onClick()
