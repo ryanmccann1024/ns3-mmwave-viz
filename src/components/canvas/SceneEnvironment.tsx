@@ -8,9 +8,9 @@ interface Props {
 export function SceneEnvironment({ sceneCX, sceneCY }: Props) {
   return (
     <>
-      <ambientLight intensity={0.7} />
+      <ambientLight intensity={1.0} />
       <directionalLight position={[300, 400, 200]} intensity={1.2} />
-      <pointLight position={[sceneCX, 120, sceneCY]} intensity={0.6} color="#7dd3fc" />
+      <pointLight position={[sceneCX, 120, sceneCY]} intensity={0.4} color="#ffffff" />
 
       <mesh position={[sceneCX, -0.15, sceneCY]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[600, 600]} />
@@ -22,10 +22,10 @@ export function SceneEnvironment({ sceneCX, sceneCY }: Props) {
         args={[500, 500]}
         cellSize={25}
         cellThickness={0.4}
-        cellColor="#1e3a5f"
+        cellColor="#9ca3af"
         sectionSize={100}
         sectionThickness={0.8}
-        sectionColor="#2563eb"
+        sectionColor="#374151"
         fadeDistance={600}
         fadeStrength={1}
       />

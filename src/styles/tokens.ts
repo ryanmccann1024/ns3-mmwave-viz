@@ -1,19 +1,19 @@
 import type { NodeType } from '../types'
 
 export const NODE_COLORS: Record<NodeType, string> = {
-  ground: '#7dd3fc',
-  air: '#fbbf24',
-  bs: '#c084fc',
-  vehicle: '#34d399',
+  ground: '#0ea5e9',
+  air: '#f59e0b',
+  bs: '#a855f7',
+  vehicle: '#10b981',
 }
-export const NODE_COLOR_INACTIVE = '#334155'
-export const NODE_COLOR_DIMMED = '#1e3a4a'
-export const NODE_COLOR_SELECTED = '#ffffff'
+export const NODE_COLOR_INACTIVE = '#94a3b8'
+export const NODE_COLOR_DIMMED = '#cbd5e1'
+export const NODE_COLOR_SELECTED = '#0f172a'
 
 export const LINK_COLORS = {
-  losConnected: '#22c55e',
-  nlosConnected: '#f97316',
-  disconnected: '#ef4444',
+  losConnected: '#16a34a',
+  nlosConnected: '#ea580c',
+  disconnected: '#dc2626',
 } as const
 
 export const NODE_SIZES: Record<NodeType, number> = {
@@ -31,10 +31,10 @@ export const NODE_LABELS: Record<NodeType, string> = {
 }
 
 export const NODE_BADGE_CLASSES: Record<NodeType, string> = {
-  ground: 'bg-slate-700 text-slate-300',
-  air: 'bg-sky-900/60 text-sky-300 border border-sky-700',
-  bs: 'bg-purple-900/60 text-purple-300 border border-purple-700',
-  vehicle: 'bg-emerald-900/60 text-emerald-300 border border-emerald-700',
+  ground: 'bg-sky-100 text-sky-800 border border-sky-200',
+  air: 'bg-amber-100 text-amber-800 border border-amber-200',
+  bs: 'bg-purple-100 text-purple-800 border border-purple-200',
+  vehicle: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
 }
 
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {
@@ -45,10 +45,10 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
 }
 
 export const LINK_BADGE_CLASSES = {
-  LOS: 'bg-emerald-900/60 text-emerald-300',
-  NLOS: 'bg-orange-900/60 text-orange-300',
-  connected: 'bg-emerald-900/60 text-emerald-300',
-  disconnected: 'bg-red-900/60 text-red-300',
+  LOS: 'bg-emerald-100 text-emerald-800',
+  NLOS: 'bg-orange-100 text-orange-800',
+  connected: 'bg-emerald-100 text-emerald-800',
+  disconnected: 'bg-red-100 text-red-800',
 } as const
 
 export const PLAYBACK_SPEEDS = [0.5, 1, 2, 5, 10] as const

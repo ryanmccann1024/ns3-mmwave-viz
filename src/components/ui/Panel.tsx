@@ -7,7 +7,7 @@ interface Props {
 
 export function Panel({ className, children }: Props) {
   return (
-    <div className={`bg-slate-800/60 border border-slate-700 rounded-xl ${className ?? ''}`}>
+    <div className={`bg-white border border-gray-200 rounded-xl ${className ?? ''}`}>
       {children}
     </div>
   )

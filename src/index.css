@@ -8,20 +8,18 @@
 
 body {
   margin: 0;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
 }
 
-/* Smooth node transitions in SVG */
 circle {
   transition: fill 0.15s ease, stroke 0.15s ease, r 0.15s ease;
 }
 
-/* Range input styling */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
-  background: #334155;
+  background: #e2e8f0;
   border-radius: 9999px;
   outline: none;
 }
@@ -32,6 +30,6 @@ input[type='range']::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #38bdf8;
+  background: #0ea5e9;
   cursor: pointer;
 }
