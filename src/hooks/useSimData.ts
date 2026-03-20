@@ -1,29 +1,30 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import Papa from 'papaparse'
-import type { SimFrame, NodeState, LinkState, SimMeta, NodeType } from '../types'
+import type { SimFrame, NodeState, LinkState, SimMeta, NodeType, BuildingState } from '../types'
 
 export type PlaybackSpeed = 0.5 | 1 | 2 | 5 | 10
 
 interface SimDataState {
   frames: SimFrame[]
   frameIndex: number
-  frameAlpha: number
   playing: boolean
   speed: PlaybackSpeed
-  threshold: number
   meta: SimMeta | null
+  buildings: BuildingState[]
 }
 
 export type UseSimDataReturn = SimDataState & {
   currentFrame: SimFrame | null
   nextFrame: SimFrame | null
   loaded: boolean
-  loadFiles: (linksFile: File, positionsFile: File) => void
+  /** Mutable ref updated every RAF tick — read inside R3F useFrame, not React render */
+  frameAlphaRef: React.MutableRefObject<number>
+  loadFiles: (linksFile: File, positionsFile: File, buildingsFile?: File) => void
+  reset: () => void
   play: () => void
   pause: () => void
   seek: (index: number) => void
   setSpeed: (speed: PlaybackSpeed) => void
-  setThreshold: (t: number) => void
 }
 
 // -------------------------------------------------------------------------
@@ -56,13 +57,7 @@ function parseMeta(text: string): SimMeta {
 }
 
 interface LinkRow {
-  time_s: string
-  node_a: string
-  node_b: string
-  dist_m: string
-  pathloss_dB: string
-  rx_power_dBm: string
-  condition: string
+  [key: string]: string
 }
 interface PosRow {
   time_s: string
@@ -81,7 +76,62 @@ function stripComments(t: string) {
     .join('\n')
 }
 
-function parseFiles(linksText: string, posText: string, threshold: number): SimFrame[] {
+/**
+ * Case-insensitive lookup of a field in a CSV row.
+ * PapaParse preserves header casing, so we normalise to find the value.
+ */
+function field(row: Record<string, string>, name: string): string {
+  const lower = name.toLowerCase()
+  for (const k of Object.keys(row)) {
+    if (k.trim().toLowerCase() === lower) return row[k] ?? ''
+  }
+  return ''
+}
+
+function normaliseCondition(raw: string): 'LOS' | 'NLOS' {
+  const v = raw.trim().toUpperCase()
+  if (v === 'LOS') return 'LOS'
+  return 'NLOS'
+}
+
+/** Parse buildings.json — supports bbox (x_min/x_max/y_min/y_max/z_min/z_max) or
+ *  centre+dims (x/y/z/width/depth/height) formats, and a top-level "buildings" wrapper. */
+function parseBuildings(json: string): BuildingState[] {
+  try {
+    let raw = JSON.parse(json)
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray(raw.buildings)) {
+      raw = raw.buildings
+    }
+    if (!Array.isArray(raw)) return []
+
+    return (raw as Record<string, number>[]).map((b, i) => {
+      if ('x_min' in b && 'x_max' in b) {
+        return {
+          id: b.id ?? i,
+          x: (b.x_min + b.x_max) / 2,
+          y: (b.y_min + b.y_max) / 2,
+          z: b.z_min ?? 0,
+          width: b.x_max - b.x_min,
+          depth: b.y_max - b.y_min,
+          height: (b.z_max ?? 10) - (b.z_min ?? 0),
+        }
+      }
+      return {
+        id: b.id ?? i,
+        x: b.x ?? 0,
+        y: b.y ?? 0,
+        z: b.z ?? 0,
+        width: b.width ?? 20,
+        depth: b.depth ?? 20,
+        height: b.height ?? 10,
+      }
+    })
+  } catch {
+    return []
+  }
+}
+
+function parseFiles(linksText: string, posText: string): SimFrame[] {
   const linkRows = Papa.parse<LinkRow>(stripComments(linksText), {
     header: true,
     skipEmptyLines: true,
@@ -107,17 +157,20 @@ function parseFiles(linksText: string, posText: string, threshold: number): SimF
 
   const linksByTime = new Map<number, LinkState[]>()
   for (const r of linkRows) {
-    const t = parseFloat(r.time_s)
+    const t = parseFloat(field(r, 'time_s'))
     if (!linksByTime.has(t)) linksByTime.set(t, [])
-    const rxPower = parseFloat(r.rx_power_dBm)
+    const sinrRaw =
+      field(r, 'sinr_db') || field(r, 'sinr_dB') || field(r, 'snr_dB') || field(r, 'snr')
+    const sinr = sinrRaw ? parseFloat(sinrRaw) : undefined
     linksByTime.get(t)!.push({
-      nodeA: parseInt(r.node_a),
-      nodeB: parseInt(r.node_b),
-      dist: parseFloat(r.dist_m),
-      pathloss: parseFloat(r.pathloss_dB),
-      rxPower,
-      condition: r.condition.trim() as 'LOS' | 'NLOS',
-      connected: rxPower >= threshold,
+      nodeA: parseInt(field(r, 'node_a')),
+      nodeB: parseInt(field(r, 'node_b')),
+      dist: parseFloat(field(r, 'dist_m')),
+      pathloss: parseFloat(field(r, 'pathloss_dB')),
+      rxPower: parseFloat(field(r, 'rx_power_dBm')),
+      sinr: sinr !== undefined && !isNaN(sinr) ? sinr : undefined,
+      condition: normaliseCondition(field(r, 'condition')),
+      connected: true,
     })
   }
 
@@ -131,13 +184,6 @@ function parseFiles(linksText: string, posText: string, threshold: number): SimF
   }))
 }
 
-function applyThreshold(frames: SimFrame[], threshold: number): SimFrame[] {
-  return frames.map((f) => ({
-    ...f,
-    links: f.links.map((l) => ({ ...l, connected: l.rxPower >= threshold })),
-  }))
-}
-
 // -------------------------------------------------------------------------
 // Hook
 // -------------------------------------------------------------------------
@@ -145,25 +191,28 @@ export function useSimData(): UseSimDataReturn {
   const [state, setState] = useState<SimDataState>({
     frames: [],
     frameIndex: 0,
-    frameAlpha: 0,
     playing: false,
     speed: 1,
-    threshold: -90,
     meta: null,
+    buildings: [],
   })
 
-  // Use refs to hold current speed/framesLen so interval callbacks don't go stale
-  // This is the critical fix: startInterval must NOT be called inside setState()
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const lastRafTimeRef = useRef<number | null>(null)
   const accumulatedMs = useRef(0)
   const framesLenRef = useRef(0)
+  const frameIndexRef = useRef(0)
   const speedRef = useRef<PlaybackSpeed>(1)
-  const tickMsRef = useRef(50) // frame spacing in ms, read from CSV metadata
+  const tickMsRef = useRef(100)
+  /** Updated every RAF tick — read in R3F useFrame for smooth interpolation */
+  const frameAlphaRef = useRef(0)
 
-  // Keep refs in sync with state
   useEffect(() => {
     framesLenRef.current = state.frames.length
   }, [state.frames.length])
+  useEffect(() => {
+    frameIndexRef.current = state.frameIndex
+  }, [state.frameIndex])
   useEffect(() => {
     speedRef.current = state.speed
   }, [state.speed])
@@ -172,79 +221,118 @@ export function useSimData(): UseSimDataReturn {
   }, [state.meta])
 
   const stopInterval = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
     }
+    lastRafTimeRef.current = null
     accumulatedMs.current = 0
+    frameAlphaRef.current = 0
   }, [])
 
   const startInterval = useCallback(() => {
     stopInterval()
-    const TICK_MS = 16
-    const getFrameMs = () => tickMsRef.current / speedRef.current
 
-    intervalRef.current = setInterval(() => {
-      accumulatedMs.current += TICK_MS
-      const FRAME_MS = getFrameMs()
+    const tick = (time: number) => {
+      // Use actual elapsed wall-clock time so alpha never drifts or jumps
+      const elapsed = lastRafTimeRef.current !== null ? time - lastRafTimeRef.current : 0
+      lastRafTimeRef.current = time
 
-      // Compute advances OUTSIDE setState so ref mutations never happen
-      // inside an updater — StrictMode double-invokes updaters, which would
-      // cause the accumulator to subtract twice and stall at slow speeds.
+      accumulatedMs.current += elapsed
+      const FRAME_MS = tickMsRef.current / speedRef.current
+
       let framesToAdvance = 0
       while (accumulatedMs.current >= FRAME_MS) {
         accumulatedMs.current -= FRAME_MS
         framesToAdvance++
       }
-      const newAlpha = Math.min(accumulatedMs.current / FRAME_MS, 1)
+      // Update alpha ref directly — no React setState, no re-render
+      frameAlphaRef.current = Math.min(accumulatedMs.current / FRAME_MS, 1)
 
-      setState((prev) => {
-        if (prev.frameIndex >= framesLenRef.current - 1) {
-          clearInterval(intervalRef.current!)
-          intervalRef.current = null
-          return { ...prev, playing: false, frameAlpha: 0 }
+      if (framesToAdvance > 0) {
+        const newIndex = Math.min(frameIndexRef.current + framesToAdvance, framesLenRef.current - 1)
+        frameIndexRef.current = newIndex
+        setState((prev) => {
+          if (prev.frameIndex >= framesLenRef.current - 1) {
+            frameAlphaRef.current = 0
+            return { ...prev, playing: false }
+          }
+          return { ...prev, frameIndex: newIndex }
+        })
+        if (newIndex >= framesLenRef.current - 1) {
+          // Reached the end — stop the loop synchronously
+          rafRef.current = null
+          frameAlphaRef.current = 0
+          return
         }
-        if (framesToAdvance > 0) {
-          const newIndex = Math.min(prev.frameIndex + framesToAdvance, framesLenRef.current - 1)
-          return { ...prev, frameIndex: newIndex, frameAlpha: newAlpha }
-        }
-        return { ...prev, frameAlpha: newAlpha }
-      })
-    }, TICK_MS)
+      }
+
+      rafRef.current = requestAnimationFrame(tick)
+    }
+
+    rafRef.current = requestAnimationFrame(tick)
   }, [stopInterval])
 
   useEffect(() => () => stopInterval(), [stopInterval])
 
   const loadFiles = useCallback(
-    (linksFile: File, positionsFile: File) => {
+    (linksFile: File, positionsFile: File, buildingsFile?: File) => {
       const readFile = (f: File) =>
         new Promise<string>((res) => {
           const r = new FileReader()
           r.onload = (e) => res(e.target!.result as string)
           r.readAsText(f)
         })
-      Promise.all([readFile(linksFile), readFile(positionsFile)]).then(([linksText, posText]) => {
+
+      const tasks: Promise<string>[] = [readFile(linksFile), readFile(positionsFile)]
+      if (buildingsFile) tasks.push(readFile(buildingsFile))
+
+      Promise.all(tasks).then(([linksText, posText, buildingsText]) => {
         stopInterval()
         const meta = parseMeta(posText)
-        setState((prev) => {
-          const frames = parseFiles(linksText, posText, prev.threshold)
-          framesLenRef.current = frames.length
-          return { ...prev, frames, frameIndex: 0, frameAlpha: 0, playing: false, meta }
+        const frames = parseFiles(linksText, posText)
+        const buildings = buildingsText ? parseBuildings(buildingsText) : []
+        framesLenRef.current = frames.length
+        frameIndexRef.current = 0
+        frameAlphaRef.current = 0
+        setState({
+          frames,
+          frameIndex: 0,
+          playing: false,
+          speed: speedRef.current,
+          meta,
+          buildings,
         })
       })
     },
     [stopInterval]
   )
 
-  // play: update state THEN call startInterval — never inside setState
-  // If already at the last frame, restart from frame 0
+  const reset = useCallback(() => {
+    stopInterval()
+    frameAlphaRef.current = 0
+    framesLenRef.current = 0
+    frameIndexRef.current = 0
+    setState({
+      frames: [],
+      frameIndex: 0,
+      playing: false,
+      speed: speedRef.current,
+      meta: null,
+      buildings: [],
+    })
+  }, [stopInterval])
+
   const play = useCallback(() => {
     if (!framesLenRef.current) return
     setState((prev) => {
       const atEnd = prev.frameIndex >= framesLenRef.current - 1
-      return { ...prev, playing: true, frameIndex: atEnd ? 0 : prev.frameIndex, frameAlpha: 0 }
+      const newIndex = atEnd ? 0 : prev.frameIndex
+      frameIndexRef.current = newIndex
+      return { ...prev, playing: true, frameIndex: newIndex }
     })
     accumulatedMs.current = 0
+    frameAlphaRef.current = 0
     startInterval()
   }, [startInterval])
 
@@ -254,43 +342,31 @@ export function useSimData(): UseSimDataReturn {
   }, [stopInterval])
 
   const seek = useCallback((index: number) => {
-    // Keep playing if already playing — just jump to new frame
     accumulatedMs.current = 0
-    setState((prev) => ({ ...prev, frameIndex: index, frameAlpha: 0 }))
+    frameAlphaRef.current = 0
+    frameIndexRef.current = index
+    setState((prev) => ({ ...prev, frameIndex: index }))
   }, [])
 
   const setSpeed = useCallback((speed: PlaybackSpeed) => {
     speedRef.current = speed
-    setState((prev) => ({ ...prev, speed }))
-    // If already playing, restart interval with new speed (accum resets)
     setState((prev) => {
-      if (prev.playing) {
-        accumulatedMs.current = 0
-      }
-      return prev
+      if (prev.playing) accumulatedMs.current = 0
+      return { ...prev, speed }
     })
   }, [])
-
-  const setThreshold = useCallback(
-    (threshold: number) =>
-      setState((prev) => ({
-        ...prev,
-        threshold,
-        frames: applyThreshold(prev.frames, threshold),
-      })),
-    []
-  )
 
   return {
     ...state,
     currentFrame: state.frames[state.frameIndex] ?? null,
     nextFrame: state.frames[state.frameIndex + 1] ?? null,
     loaded: state.frames.length > 0,
+    frameAlphaRef,
     loadFiles,
+    reset,
     play,
     pause,
     seek,
     setSpeed,
-    setThreshold,
   }
 }
