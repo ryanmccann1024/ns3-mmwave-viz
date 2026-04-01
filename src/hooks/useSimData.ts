@@ -1,8 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import Papa from 'papaparse'
-import type { SimFrame, NodeState, LinkState, SimMeta, NodeType, BuildingState } from '../types'
+import type { SimFrame, SimMeta, BuildingState } from '../types'
+import { parseMeta, parseBuildings, parseFiles } from '../lib/parseSimFiles'
 
 export type PlaybackSpeed = 0.5 | 1 | 2 | 5 | 10
+
+export interface SceneBounds {
+  cx: number
+  cy: number
+  gridSize: number
+  planeSize: number
+}
+
+const DEFAULT_BOUNDS: SceneBounds = { cx: 75, cy: 75, gridSize: 500, planeSize: 600 }
 
 interface SimDataState {
   frames: SimFrame[]
@@ -11,6 +20,43 @@ interface SimDataState {
   speed: PlaybackSpeed
   meta: SimMeta | null
   buildings: BuildingState[]
+  sceneBounds: SceneBounds
+}
+
+function computeBounds(frames: SimFrame[], buildings: BuildingState[]): SceneBounds {
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity
+
+  for (const f of frames) {
+    for (const n of f.nodes) {
+      if (n.x < minX) minX = n.x
+      if (n.x > maxX) maxX = n.x
+      if (n.y < minY) minY = n.y
+      if (n.y > maxY) maxY = n.y
+    }
+  }
+  for (const b of buildings) {
+    const bMinX = b.x - b.width / 2,
+      bMaxX = b.x + b.width / 2
+    const bMinY = b.y - b.depth / 2,
+      bMaxY = b.y + b.depth / 2
+    if (bMinX < minX) minX = bMinX
+    if (bMaxX > maxX) maxX = bMaxX
+    if (bMinY < minY) minY = bMinY
+    if (bMaxY > maxY) maxY = bMaxY
+  }
+
+  if (!isFinite(minX)) return DEFAULT_BOUNDS
+
+  const cx = (minX + maxX) / 2
+  const cy = (minY + maxY) / 2
+  const maxSpan = Math.max(maxX - minX, maxY - minY)
+  const gridSize = Math.max(500, Math.ceil((maxSpan * 1.3) / 50) * 50)
+  const planeSize = gridSize * 1.2
+
+  return { cx, cy, gridSize, planeSize }
 }
 
 export type UseSimDataReturn = SimDataState & {
@@ -19,169 +65,19 @@ export type UseSimDataReturn = SimDataState & {
   loaded: boolean
   /** Mutable ref updated every RAF tick — read inside R3F useFrame, not React render */
   frameAlphaRef: React.MutableRefObject<number>
-  loadFiles: (linksFile: File, positionsFile: File, buildingsFile?: File) => void
+  loadFiles: (files: {
+    linksFile: File
+    positionsFile: File
+    buildingsFile?: File
+    flowsFile?: File
+    routesFile?: File
+    nodesJsonFile?: File
+  }) => void
   reset: () => void
   play: () => void
   pause: () => void
   seek: (index: number) => void
   setSpeed: (speed: PlaybackSpeed) => void
-}
-
-// -------------------------------------------------------------------------
-// Parsing helpers
-// -------------------------------------------------------------------------
-function parseMeta(text: string): SimMeta {
-  const meta: Partial<SimMeta> = {}
-  for (const line of text.split('\n')) {
-    if (!line.startsWith('#')) break
-    const m = line.match(/^#\s*(\w+)=(.+)$/)
-    if (!m) continue
-    const [, key, val] = m
-    if (key === 'scenario') meta.scenario = val.trim()
-    if (key === 'frequency') meta.frequency = parseFloat(val)
-    if (key === 'txPower') meta.txPower = parseFloat(val)
-    if (key === 'numNodes') meta.numNodes = parseInt(val)
-    if (key === 'simDuration') meta.simDuration = parseInt(val)
-    if (key === 'tickMs') meta.tickMs = parseInt(val)
-    if (key === 'dimensions') meta.dimensions = parseInt(val) as 1 | 2 | 3
-  }
-  return {
-    scenario: meta.scenario ?? 'Unknown',
-    frequency: meta.frequency ?? 28e9,
-    txPower: meta.txPower ?? 23,
-    numNodes: meta.numNodes ?? 0,
-    simDuration: meta.simDuration ?? 0,
-    tickMs: meta.tickMs ?? 100,
-    dimensions: meta.dimensions ?? 3,
-  }
-}
-
-interface LinkRow {
-  [key: string]: string
-}
-interface PosRow {
-  time_s: string
-  node_id: string
-  x: string
-  y: string
-  z: string
-  node_type: string
-  active?: string
-}
-
-function stripComments(t: string) {
-  return t
-    .split('\n')
-    .filter((l) => !l.startsWith('#'))
-    .join('\n')
-}
-
-/**
- * Case-insensitive lookup of a field in a CSV row.
- * PapaParse preserves header casing, so we normalise to find the value.
- */
-function field(row: Record<string, string>, name: string): string {
-  const lower = name.toLowerCase()
-  for (const k of Object.keys(row)) {
-    if (k.trim().toLowerCase() === lower) return row[k] ?? ''
-  }
-  return ''
-}
-
-function normaliseCondition(raw: string): 'LOS' | 'NLOS' {
-  const v = raw.trim().toUpperCase()
-  if (v === 'LOS') return 'LOS'
-  return 'NLOS'
-}
-
-/** Parse buildings.json — supports bbox (x_min/x_max/y_min/y_max/z_min/z_max) or
- *  centre+dims (x/y/z/width/depth/height) formats, and a top-level "buildings" wrapper. */
-function parseBuildings(json: string): BuildingState[] {
-  try {
-    let raw = JSON.parse(json)
-    if (raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray(raw.buildings)) {
-      raw = raw.buildings
-    }
-    if (!Array.isArray(raw)) return []
-
-    return (raw as Record<string, number>[]).map((b, i) => {
-      if ('x_min' in b && 'x_max' in b) {
-        return {
-          id: b.id ?? i,
-          x: (b.x_min + b.x_max) / 2,
-          y: (b.y_min + b.y_max) / 2,
-          z: b.z_min ?? 0,
-          width: b.x_max - b.x_min,
-          depth: b.y_max - b.y_min,
-          height: (b.z_max ?? 10) - (b.z_min ?? 0),
-        }
-      }
-      return {
-        id: b.id ?? i,
-        x: b.x ?? 0,
-        y: b.y ?? 0,
-        z: b.z ?? 0,
-        width: b.width ?? 20,
-        depth: b.depth ?? 20,
-        height: b.height ?? 10,
-      }
-    })
-  } catch {
-    return []
-  }
-}
-
-function parseFiles(linksText: string, posText: string): SimFrame[] {
-  const linkRows = Papa.parse<LinkRow>(stripComments(linksText), {
-    header: true,
-    skipEmptyLines: true,
-  }).data
-  const posRows = Papa.parse<PosRow>(stripComments(posText), {
-    header: true,
-    skipEmptyLines: true,
-  }).data
-
-  const posByTime = new Map<number, NodeState[]>()
-  for (const r of posRows) {
-    const t = parseFloat(r.time_s)
-    if (!posByTime.has(t)) posByTime.set(t, [])
-    posByTime.get(t)!.push({
-      id: parseInt(r.node_id),
-      x: parseFloat(r.x),
-      y: parseFloat(r.y),
-      z: parseFloat(r.z),
-      nodeType: (r.node_type?.trim() as NodeType) ?? 'ground',
-      active: r.active !== undefined ? r.active.trim() !== '0' : true,
-    })
-  }
-
-  const linksByTime = new Map<number, LinkState[]>()
-  for (const r of linkRows) {
-    const t = parseFloat(field(r, 'time_s'))
-    if (!linksByTime.has(t)) linksByTime.set(t, [])
-    const sinrRaw =
-      field(r, 'sinr_db') || field(r, 'sinr_dB') || field(r, 'snr_dB') || field(r, 'snr')
-    const sinr = sinrRaw ? parseFloat(sinrRaw) : undefined
-    linksByTime.get(t)!.push({
-      nodeA: parseInt(field(r, 'node_a')),
-      nodeB: parseInt(field(r, 'node_b')),
-      dist: parseFloat(field(r, 'dist_m')),
-      pathloss: parseFloat(field(r, 'pathloss_dB')),
-      rxPower: parseFloat(field(r, 'rx_power_dBm')),
-      sinr: sinr !== undefined && !isNaN(sinr) ? sinr : undefined,
-      condition: normaliseCondition(field(r, 'condition')),
-      connected: true,
-    })
-  }
-
-  const times = Array.from(new Set([...posByTime.keys(), ...linksByTime.keys()])).sort(
-    (a, b) => a - b
-  )
-  return times.map((t) => ({
-    time: t,
-    nodes: (posByTime.get(t) ?? []).sort((a, b) => a.id - b.id),
-    links: linksByTime.get(t) ?? [],
-  }))
 }
 
 // -------------------------------------------------------------------------
@@ -195,6 +91,7 @@ export function useSimData(): UseSimDataReturn {
     speed: 1,
     meta: null,
     buildings: [],
+    sceneBounds: DEFAULT_BOUNDS,
   })
 
   const rafRef = useRef<number | null>(null)
@@ -210,9 +107,9 @@ export function useSimData(): UseSimDataReturn {
   useEffect(() => {
     framesLenRef.current = state.frames.length
   }, [state.frames.length])
-  useEffect(() => {
-    frameIndexRef.current = state.frameIndex
-  }, [state.frameIndex])
+  // Note: frameIndexRef is NOT synced from state — it's set directly by tick/seek/play/reset/loadFiles.
+  // Syncing via useEffect caused a race: the effect could revert the ref after the RAF tick advanced it,
+  // producing visible "ripple" (frame index jumping back then forward).
   useEffect(() => {
     speedRef.current = state.speed
   }, [state.speed])
@@ -253,11 +150,9 @@ export function useSimData(): UseSimDataReturn {
         const newIndex = Math.min(frameIndexRef.current + framesToAdvance, framesLenRef.current - 1)
         frameIndexRef.current = newIndex
         setState((prev) => {
-          if (prev.frameIndex >= framesLenRef.current - 1) {
-            frameAlphaRef.current = 0
-            return { ...prev, playing: false }
-          }
-          return { ...prev, frameIndex: newIndex }
+          const atEnd = newIndex >= framesLenRef.current - 1
+          if (atEnd) frameAlphaRef.current = 0
+          return { ...prev, frameIndex: newIndex, ...(atEnd && { playing: false }) }
         })
         if (newIndex >= framesLenRef.current - 1) {
           // Reached the end — stop the loop synchronously
@@ -276,7 +171,14 @@ export function useSimData(): UseSimDataReturn {
   useEffect(() => () => stopInterval(), [stopInterval])
 
   const loadFiles = useCallback(
-    (linksFile: File, positionsFile: File, buildingsFile?: File) => {
+    (files: {
+      linksFile: File
+      positionsFile: File
+      buildingsFile?: File
+      flowsFile?: File
+      routesFile?: File
+      nodesJsonFile?: File
+    }) => {
       const readFile = (f: File) =>
         new Promise<string>((res) => {
           const r = new FileReader()
@@ -284,14 +186,27 @@ export function useSimData(): UseSimDataReturn {
           r.readAsText(f)
         })
 
-      const tasks: Promise<string>[] = [readFile(linksFile), readFile(positionsFile)]
-      if (buildingsFile) tasks.push(readFile(buildingsFile))
+      const optRead = (f?: File) => (f ? readFile(f) : Promise.resolve(undefined))
 
-      Promise.all(tasks).then(([linksText, posText, buildingsText]) => {
+      Promise.all([
+        readFile(files.linksFile),
+        readFile(files.positionsFile),
+        optRead(files.buildingsFile),
+        optRead(files.flowsFile),
+        optRead(files.routesFile),
+        optRead(files.nodesJsonFile),
+      ]).then(([linksText, posText, buildingsText, flowsText, routesText, nodesJsonText]) => {
         stopInterval()
         const meta = parseMeta(posText)
-        const frames = parseFiles(linksText, posText)
+        const frames = parseFiles({
+          linksText,
+          posText,
+          flowsText,
+          routesText,
+          nodesJsonText,
+        })
         const buildings = buildingsText ? parseBuildings(buildingsText) : []
+        const sceneBounds = computeBounds(frames, buildings)
         framesLenRef.current = frames.length
         frameIndexRef.current = 0
         frameAlphaRef.current = 0
@@ -302,6 +217,7 @@ export function useSimData(): UseSimDataReturn {
           speed: speedRef.current,
           meta,
           buildings,
+          sceneBounds,
         })
       })
     },
@@ -320,6 +236,7 @@ export function useSimData(): UseSimDataReturn {
       speed: speedRef.current,
       meta: null,
       buildings: [],
+      sceneBounds: DEFAULT_BOUNDS,
     })
   }, [stopInterval])
 

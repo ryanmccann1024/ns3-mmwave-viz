@@ -1,11 +1,14 @@
 import { useMemo } from 'react'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import type { SimFrame, BuildingState } from '../../types'
+import type { SceneBounds } from '../../hooks/useSimData'
 import { linkKey } from './utils/linkColors'
 import { NodeObject } from './NodeObject'
 import { LinkObject } from './LinkObject'
 import { BuildingObject } from './BuildingObject'
 import { SceneEnvironment } from './SceneEnvironment'
+import { RainEffect } from './RainEffect'
+import { TrafficLayer } from './TrafficLayer'
 
 interface Props {
   frame: SimFrame
@@ -14,10 +17,13 @@ interface Props {
   alphaRef: React.MutableRefObject<number>
   selectedNode: number | null
   selectedLink: string | null
+  selectedFlow: { src: number; dst: number } | null
   onSelectNode: (id: number | null) => void
   onSelectLink: (key: string | null) => void
   dimensions: 1 | 2 | 3
   buildings: BuildingState[]
+  sceneBounds: SceneBounds
+  rainRate: number
 }
 
 export function Scene({
@@ -26,10 +32,13 @@ export function Scene({
   alphaRef,
   selectedNode,
   selectedLink,
+  selectedFlow,
   onSelectNode,
   onSelectLink,
   dimensions,
   buildings,
+  sceneBounds,
+  rainRate,
 }: Props) {
   const { nodes, links } = frame
 
@@ -68,19 +77,21 @@ export function Scene({
     return s
   }, [selectedNode, selectedLink, links])
 
-  const [sceneCX, sceneCY] = useMemo(() => {
-    if (!nodes.length) return [75, 75]
-    const xs = nodes.map((n) => n.x),
-      ys = nodes.map((n) => n.y)
-    return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2]
-  }, [nodes])
+  const sceneCX = sceneBounds.cx
+  const sceneCY = sceneBounds.cy
+  const gs = sceneBounds.gridSize
+
+  // Scale camera distance and controls with scene size
+  const scale = gs / 500 // 1.0 for default 500-unit scenes
+  const camNear = Math.max(0.1, scale * 0.5)
+  const camFar = Math.max(5000, gs * 4)
 
   const camPos: [number, number, number] =
     dimensions === 2
-      ? [sceneCX, 500, sceneCY]
+      ? [sceneCX, Math.max(500, gs * 1.1), sceneCY]
       : dimensions === 1
-        ? [sceneCX, 80, 550]
-        : [200, 180, 350]
+        ? [sceneCX, 80 * scale, gs * 1.1]
+        : [sceneCX - gs * 0.35, gs * 0.35, sceneCY + gs * 0.65]
 
   return (
     <>
@@ -89,8 +100,8 @@ export function Scene({
         makeDefault
         position={camPos}
         fov={45}
-        near={0.1}
-        far={5000}
+        near={camNear}
+        far={camFar}
       />
 
       {dimensions === 2 ? (
@@ -99,6 +110,10 @@ export function Scene({
           makeDefault
           enableRotate={false}
           screenSpacePanning={true}
+          minDistance={10 * scale}
+          maxDistance={gs * 3}
+          zoomSpeed={Math.max(1, scale * 0.8)}
+          panSpeed={Math.max(1, scale * 0.8)}
         />
       ) : dimensions === 1 ? (
         <OrbitControls
@@ -107,12 +122,28 @@ export function Scene({
           minPolarAngle={Math.PI / 2 - 0.15}
           maxPolarAngle={Math.PI / 2 + 0.15}
           screenSpacePanning={true}
+          minDistance={10 * scale}
+          maxDistance={gs * 3}
+          zoomSpeed={Math.max(1, scale * 0.8)}
+          panSpeed={Math.max(1, scale * 0.8)}
         />
       ) : (
-        <OrbitControls target={[sceneCX, 0, sceneCY]} makeDefault />
+        <OrbitControls
+          target={[sceneCX, 0, sceneCY]}
+          makeDefault
+          minDistance={10 * scale}
+          maxDistance={gs * 3}
+          zoomSpeed={Math.max(1, scale * 0.8)}
+          panSpeed={Math.max(1, scale * 0.8)}
+        />
       )}
 
-      <SceneEnvironment sceneCX={sceneCX} sceneCY={sceneCY} />
+      <SceneEnvironment
+        sceneCX={sceneCX}
+        sceneCY={sceneCY}
+        gridSize={sceneBounds.gridSize}
+        planeSize={sceneBounds.planeSize}
+      />
 
       {/* Buildings */}
       {buildings.map((b) => (
@@ -148,6 +179,11 @@ export function Scene({
         )
       })}
 
+      {/* Traffic flow pulses */}
+      {frame.routes.length > 0 && (
+        <TrafficLayer frame={frame} selectedFlow={selectedFlow} dim={dimensions} />
+      )}
+
       {/* Nodes */}
       {nodes.map((n) => {
         const sel = n.id === selectedNode
@@ -169,6 +205,9 @@ export function Scene({
           />
         )
       })}
+
+      {/* Rain particles */}
+      {rainRate > 0 && <RainEffect rainRate={rainRate} sceneBounds={sceneBounds} />}
     </>
   )
 }

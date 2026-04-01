@@ -1,4 +1,4 @@
-export type NodeType = 'ground' | 'air' | 'bs' | 'vehicle'
+export type NodeType = 'ground' | 'air' | 'bs' | 'vehicle' | 'peer' | 'gateway'
 
 export interface LogEntry {
   id: number
@@ -25,7 +25,43 @@ export interface LinkState {
   rxPower?: number
   sinr?: number
   condition: 'LOS' | 'NLOS'
+  conditionReason?: string
   connected: boolean
+  capacityMbps?: number
+  deliveredMbps?: number
+  hopCount?: number
+}
+
+export interface FlowState {
+  src: number
+  dst: number
+  demandMbps: number
+  deliveredMbps: number
+  latencyMs: number
+  hopCount: number
+  routable: boolean
+}
+
+export interface RouteState {
+  src: number
+  dst: number
+  path: number[]
+  bottleneckMbps: number
+  hopCount: number
+  routable: boolean
+}
+
+export interface McsState {
+  nodeA: number
+  nodeB: number
+  mcsIndex: number
+  spectralEff: number
+}
+
+export interface RxPowerState {
+  nodeA: number
+  nodeB: number
+  rxPowerDbm: number
 }
 
 export interface BuildingState {
@@ -45,6 +81,8 @@ export interface SimFrame {
   time: number
   nodes: NodeState[]
   links: LinkState[]
+  flows: FlowState[]
+  routes: RouteState[]
 }
 
 export interface SimMeta {
@@ -55,4 +93,8 @@ export interface SimMeta {
   simDuration: number // ms
   tickMs: number // measurement interval ms (frame spacing)
   dimensions: 1 | 2 | 3
+  rainRate: number // mm/hr, 0 = no rain
+  channelModel: string
+  flowTopology: string
+  trafficModel: string
 }

@@ -24,5 +24,19 @@ export function NodeShape({ nodeType, color, emissive, emissiveIntensity }: Prop
   if (nodeType === 'bs')
     return <Cylinder args={[size * 0.4, size * 0.6, size * 3, 8]}>{mat}</Cylinder>
   if (nodeType === 'vehicle') return <Box args={[size * 2.2, size * 0.7, size * 1.0]}>{mat}</Box>
+  if (nodeType === 'gateway')
+    return (
+      <mesh>
+        <icosahedronGeometry args={[size * 1.1, 0]} />
+        {mat}
+      </mesh>
+    )
+  if (nodeType === 'peer')
+    return (
+      <mesh>
+        <octahedronGeometry args={[size, 0]} />
+        {mat}
+      </mesh>
+    )
   return <Sphere args={[size, 16, 12]}>{mat}</Sphere>
 }

@@ -1,17 +1,25 @@
 import type { SimFrame, SimMeta } from '../types'
+import { freqLabel } from '../lib/format'
 import { StatItem } from './ui/StatItem'
+import { Button } from './ui/Button'
+
+type ViewMode = 'canvas' | 'charts' | 'split'
 
 interface Props {
   frame: SimFrame
   meta: SimMeta | null
+  activeView: ViewMode
+  onChangeView: (view: ViewMode) => void
   onChangeSim: () => void
 }
 
-function freqLabel(hz: number): string {
-  return hz >= 1e9 ? `${(hz / 1e9).toFixed(1)} GHz` : `${(hz / 1e6).toFixed(0)} MHz`
-}
+const VIEW_TABS: { key: ViewMode; label: string }[] = [
+  { key: 'canvas', label: '3D' },
+  { key: 'split', label: 'Split' },
+  { key: 'charts', label: 'Charts' },
+]
 
-export function StatsBar({ frame, meta, onChangeSim }: Props) {
+export function StatsBar({ frame, meta, activeView, onChangeView, onChangeSim }: Props) {
   const { links } = frame
   const total = links.length
   const sinrLinks = links.filter((l) => l.sinr !== undefined)
@@ -33,18 +41,33 @@ export function StatsBar({ frame, meta, onChangeSim }: Props) {
         )}
       </div>
 
+      {/* View tabs */}
+      <div className="flex items-center gap-0.5 pr-3 border-r border-gray-200 mr-2">
+        {VIEW_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => onChangeView(tab.key)}
+            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              activeView === tab.key
+                ? 'bg-sky-100 text-sky-700'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* Stats */}
       <div className="hidden md:flex">
         <StatItem label="Links" value={String(total)} />
         {avgSNR !== null && <StatItem label="Avg SINR" value={`${avgSNR} dB`} />}
+        {meta && meta.rainRate > 0 && <StatItem label="Rain" value={`${meta.rainRate} mm/hr`} />}
       </div>
 
-      <button
-        onClick={onChangeSim}
-        className="ml-auto text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded px-2 py-1 transition-colors"
-      >
+      <Button variant="ghost" className="ml-auto" onClick={onChangeSim}>
         ← change sim
-      </button>
+      </Button>
     </div>
   )
 }

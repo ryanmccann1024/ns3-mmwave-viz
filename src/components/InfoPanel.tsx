@@ -1,4 +1,4 @@
-import type { SimFrame, NodeState, LinkState } from '../types'
+import type { SimFrame, NodeState, LinkState, FlowState } from '../types'
 import {
   NODE_TYPE_LABELS,
   NODE_BADGE_CLASSES,
@@ -12,7 +12,9 @@ interface Props {
   frame: SimFrame
   selectedNode: number | null
   selectedLink: string | null
+  selectedFlow: { src: number; dst: number } | null
   onSelectNode: (id: number | null) => void
+  onSelectFlow: (flow: { src: number; dst: number } | null) => void
 }
 
 function NodeDetail({ node, links }: { node: NodeState; links: LinkState[] }) {
@@ -109,8 +111,55 @@ function LinkDetail({ link }: { link: LinkState }) {
         <Row label="Distance" value={`${link.dist.toFixed(2)} m`} />
         {link.sinr !== undefined && <Row label="SINR" value={`${link.sinr.toFixed(2)} dB`} />}
         <Row label="Condition" value={link.condition} />
+        {link.conditionReason && <Row label="Reason" value={link.conditionReason} />}
+        {link.capacityMbps !== undefined && (
+          <Row label="Capacity" value={`${link.capacityMbps.toFixed(1)} Mbps`} />
+        )}
+        {link.deliveredMbps !== undefined && (
+          <Row label="Delivered" value={`${link.deliveredMbps.toFixed(1)} Mbps`} />
+        )}
+        {link.hopCount !== undefined && link.hopCount > 0 && (
+          <Row label="Max Hops" value={String(link.hopCount)} />
+        )}
       </div>
     </div>
+  )
+}
+
+function FlowDetail({
+  flow,
+  selected,
+  onSelect,
+}: {
+  flow: FlowState
+  selected: boolean
+  onSelect: () => void
+}) {
+  const ratio =
+    flow.demandMbps > 0 ? ((flow.deliveredMbps / flow.demandMbps) * 100).toFixed(0) : '—'
+  return (
+    <button
+      onClick={onSelect}
+      className={`w-full text-left py-2 px-1 border-b border-gray-100 last:border-0 transition-colors ${
+        selected ? 'bg-sky-50' : 'hover:bg-gray-50'
+      }`}
+    >
+      <div className="flex justify-between items-center mb-0.5">
+        <span className="text-gray-700 text-xs font-medium">
+          {flow.src} → {flow.dst}
+        </span>
+        <span
+          className={`text-xs font-mono ${flow.routable ? 'text-emerald-600' : 'text-red-500'}`}
+        >
+          {flow.routable ? `${ratio}%` : 'unroutable'}
+        </span>
+      </div>
+      <div className="text-gray-500 text-xs font-mono">
+        {flow.deliveredMbps.toFixed(1)}/{flow.demandMbps.toFixed(1)} Mbps
+        {flow.hopCount > 1 ? ` · ${flow.hopCount} hops` : ''}
+        {flow.latencyMs > 0 ? ` · ${flow.latencyMs.toFixed(1)}ms` : ''}
+      </div>
+    </button>
   )
 }
 
@@ -163,7 +212,14 @@ function NodeListItem({
   )
 }
 
-export function InfoPanel({ frame, selectedNode, selectedLink, onSelectNode }: Props) {
+export function InfoPanel({
+  frame,
+  selectedNode,
+  selectedLink,
+  selectedFlow,
+  onSelectNode,
+  onSelectFlow,
+}: Props) {
   const node =
     selectedNode !== null ? (frame.nodes.find((n) => n.id === selectedNode) ?? null) : null
   const link = selectedLink
@@ -171,12 +227,13 @@ export function InfoPanel({ frame, selectedNode, selectedLink, onSelectNode }: P
     : null
 
   const showDetail = node !== null || link !== null
+  const hasFlows = frame.flows.length > 0
 
   return (
     <div className="w-64 flex-shrink-0 bg-white border-l border-gray-200 flex flex-col hidden lg:flex">
       {/* Node list */}
       <div
-        className={`flex flex-col ${showDetail ? 'flex-shrink-0 max-h-48' : 'flex-1'} overflow-y-auto`}
+        className={`flex flex-col ${showDetail || hasFlows ? 'flex-shrink-0 max-h-48' : 'flex-1'} overflow-y-auto`}
       >
         <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
           <span className="text-xs text-gray-400 uppercase tracking-wider font-medium">
@@ -193,6 +250,28 @@ export function InfoPanel({ frame, selectedNode, selectedLink, onSelectNode }: P
           />
         ))}
       </div>
+
+      {/* Flows section */}
+      {hasFlows && (
+        <div className="flex flex-col flex-shrink-0 max-h-40 overflow-y-auto border-t border-gray-200">
+          <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+            <span className="text-xs text-gray-400 uppercase tracking-wider font-medium">
+              Flows ({frame.flows.length})
+            </span>
+          </div>
+          {frame.flows.map((f) => {
+            const isSelected = selectedFlow?.src === f.src && selectedFlow?.dst === f.dst
+            return (
+              <FlowDetail
+                key={`${f.src}-${f.dst}`}
+                flow={f}
+                selected={isSelected}
+                onSelect={() => onSelectFlow(isSelected ? null : { src: f.src, dst: f.dst })}
+              />
+            )
+          })}
+        </div>
+      )}
 
       {/* Detail panel */}
       {showDetail && (
@@ -219,14 +298,7 @@ export function InfoPanel({ frame, selectedNode, selectedLink, onSelectNode }: P
               NLOS connected
             </div>
             <div className="flex items-center gap-2">
-              <span
-                className="w-3 h-0.5 bg-red-400 inline-block"
-                style={{
-                  backgroundImage:
-                    'repeating-linear-gradient(90deg, #f87171 0, #f87171 3px, transparent 3px, transparent 6px)',
-                  height: '1px',
-                }}
-              />
+              <span className="w-3 h-0 border-t border-dashed border-red-400 inline-block" />
               Disconnected
             </div>
           </div>

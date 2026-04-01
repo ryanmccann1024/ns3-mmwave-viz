@@ -6,107 +6,16 @@ import {
   saveDirectoryHandle,
   clearDirectoryHandle,
 } from '../lib/directoryCache'
-
-// -------------------------------------------------------------------------
-// Types
-// -------------------------------------------------------------------------
-interface RunEntry {
-  yearMonth: string
-  day: string
-  time: string
-  seed: string
-  key: string
-  linksFile: File
-  posFile: File
-  buildingsFile?: File
-}
+import type { RunEntry } from '../lib/assembleRuns'
+import {
+  assembleRuns,
+  fetchRunsFromDevServer,
+  parseRunsFromFileList,
+  walkDirectory,
+} from '../lib/assembleRuns'
 
 interface Props {
-  onLoad: (linksFile: File, positionsFile: File, buildingsFile?: File) => void
-}
-
-// -------------------------------------------------------------------------
-// Parsing helpers — shared by both the classic <input> and FSA paths
-// -------------------------------------------------------------------------
-type FilePair = { path: string; file: File }
-
-function assembleRuns(pairs: FilePair[]): RunEntry[] {
-  type Partial = {
-    yearMonth: string
-    day: string
-    time: string
-    seed: string
-    key: string
-    links?: File
-    pos?: File
-    buildings?: File
-  }
-  const byKey = new Map<string, Partial>()
-
-  for (const { path, file } of pairs) {
-    const parts = path.split('/')
-    // Expected: outputs/YYYY-MM/DD/HH-MM-SS/seed-N/filename
-    if (parts.length < 6) continue
-    const fname = parts[parts.length - 1]
-    if (fname !== 'links.csv' && fname !== 'positions.csv' && fname !== 'buildings.json') continue
-
-    const seedDir = parts[parts.length - 2]
-    if (!seedDir.startsWith('seed-')) continue
-
-    const time = parts[parts.length - 3]
-    const day = parts[parts.length - 4]
-    const yearMonth = parts[parts.length - 5]
-    const key = `${yearMonth}/${day}/${time}/${seedDir}`
-
-    if (!byKey.has(key)) byKey.set(key, { yearMonth, day, time, seed: seedDir, key })
-    const entry = byKey.get(key)!
-    if (fname === 'links.csv') entry.links = file
-    if (fname === 'positions.csv') entry.pos = file
-    if (fname === 'buildings.json') entry.buildings = file
-  }
-
-  const runs: RunEntry[] = []
-  for (const e of byKey.values()) {
-    if (e.links && e.pos)
-      runs.push({
-        yearMonth: e.yearMonth,
-        day: e.day,
-        time: e.time,
-        seed: e.seed,
-        key: e.key,
-        linksFile: e.links!,
-        posFile: e.pos!,
-        buildingsFile: e.buildings,
-      })
-  }
-  return runs.sort((a, b) => b.key.localeCompare(a.key))
-}
-
-// Classic <input webkitdirectory> path
-function parseRunsFromFileList(files: FileList): RunEntry[] {
-  const pairs: FilePair[] = Array.from(files).map((f) => ({
-    path: f.webkitRelativePath,
-    file: f,
-  }))
-  return assembleRuns(pairs)
-}
-
-// File System Access API path — walk directory recursively
-async function walkDirectory(handle: FileSystemDirectoryHandle, prefix = ''): Promise<FilePair[]> {
-  const pairs: FilePair[] = []
-  for await (const [name, entry] of handle) {
-    const path = prefix ? `${prefix}/${name}` : name
-    if (entry.kind === 'file') {
-      // Only materialise files we care about (avoid reading every file)
-      if (name === 'links.csv' || name === 'positions.csv' || name === 'buildings.json') {
-        const file = await (entry as FileSystemFileHandle).getFile()
-        pairs.push({ path, file })
-      }
-    } else if (entry.kind === 'directory') {
-      pairs.push(...(await walkDirectory(entry as FileSystemDirectoryHandle, path)))
-    }
-  }
-  return pairs
+  onLoad: (run: RunEntry) => void
 }
 
 // -------------------------------------------------------------------------
@@ -162,13 +71,22 @@ export function FileLoader({ onLoad }: Props) {
   }, [openWithFSA])
 
   // -----------------------------------------------------------------------
-  // On mount: try to restore cached handle
+  // On mount: try dev-server auto-discovery first, then cached FSA handle
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!hasFSA()) return
     let cancelled = false
 
-    loadDirectoryHandle().then(async (handle) => {
+    ;(async () => {
+      // 1. Try the dev-server API (no permission prompt needed)
+      const devRuns = await fetchRunsFromDevServer()
+      if (!cancelled && devRuns && devRuns.length > 0) {
+        applyRuns('outputs', devRuns)
+        return
+      }
+
+      // 2. Fall back to cached FSA handle
+      if (!hasFSA()) return
+      const handle = await loadDirectoryHandle()
       if (cancelled || !handle) return
       try {
         const perm = await handle.requestPermission({ mode: 'read' })
@@ -176,15 +94,14 @@ export function FileLoader({ onLoad }: Props) {
           await openWithFSA(handle)
         }
       } catch {
-        // Handle may be stale or permission was rejected
         await clearDirectoryHandle()
       }
-    })
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [openWithFSA])
+  }, [openWithFSA, applyRuns])
 
   // -----------------------------------------------------------------------
   // Classic <input> fallback
@@ -217,7 +134,7 @@ export function FileLoader({ onLoad }: Props) {
   // -----------------------------------------------------------------------
   function selectRun(run: RunEntry) {
     setActiveKey(run.key)
-    onLoad(run.linksFile, run.posFile, run.buildingsFile)
+    onLoad(run)
   }
 
   // Group by YYYY-MM/DD
@@ -259,12 +176,9 @@ export function FileLoader({ onLoad }: Props) {
         )}
 
         {dirName && hasFSA() && (
-          <button
-            onClick={handleForgetFolder}
-            className="text-xs text-gray-400 hover:text-gray-500 transition-colors"
-          >
+          <Button variant="link" onClick={handleForgetFolder}>
             Forget saved folder
-          </button>
+          </Button>
         )}
 
         {permissionDenied && (

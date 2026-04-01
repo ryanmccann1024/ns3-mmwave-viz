@@ -5,6 +5,8 @@ export const NODE_COLORS: Record<NodeType, string> = {
   air: '#f59e0b',
   bs: '#a855f7',
   vehicle: '#10b981',
+  peer: '#e2e8f0',
+  gateway: '#f43f5e',
 }
 export const NODE_COLOR_INACTIVE = '#94a3b8'
 export const NODE_COLOR_DIMMED = '#cbd5e1'
@@ -21,6 +23,8 @@ export const NODE_SIZES: Record<NodeType, number> = {
   bs: 3,
   ground: 3.5,
   vehicle: 3.5,
+  peer: 3.5,
+  gateway: 4.5,
 }
 
 export const NODE_LABELS: Record<NodeType, string> = {
@@ -28,6 +32,8 @@ export const NODE_LABELS: Record<NodeType, string> = {
   bs: 'BS',
   vehicle: 'VEH',
   ground: 'GND',
+  peer: 'PEER',
+  gateway: 'GW',
 }
 
 export const NODE_BADGE_CLASSES: Record<NodeType, string> = {
@@ -35,6 +41,8 @@ export const NODE_BADGE_CLASSES: Record<NodeType, string> = {
   air: 'bg-amber-100 text-amber-800 border border-amber-200',
   bs: 'bg-purple-100 text-purple-800 border border-purple-200',
   vehicle: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+  peer: 'bg-slate-100 text-slate-800 border border-slate-200',
+  gateway: 'bg-rose-100 text-rose-800 border border-rose-200',
 }
 
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {
@@ -42,6 +50,8 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   air: 'AIR / UAV',
   bs: 'BASE STATION',
   vehicle: 'VEHICLE',
+  peer: 'PEER',
+  gateway: 'GATEWAY',
 }
 
 export const LINK_BADGE_CLASSES = {
