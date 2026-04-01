@@ -14,8 +14,8 @@ export const NODE_COLOR_SELECTED = '#0f172a'
 
 export const LINK_COLORS = {
   losConnected: '#16a34a',
-  nlosConnected: '#ea580c',
-  disconnected: '#dc2626',
+  nlosConnected: '#eab308',
+  disconnected: '#9ca3af',
 } as const
 
 export const NODE_SIZES: Record<NodeType, number> = {
@@ -56,9 +56,9 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
 
 export const LINK_BADGE_CLASSES = {
   LOS: 'bg-emerald-100 text-emerald-800',
-  NLOS: 'bg-orange-100 text-orange-800',
+  NLOS: 'bg-yellow-100 text-yellow-800',
   connected: 'bg-emerald-100 text-emerald-800',
-  disconnected: 'bg-red-100 text-red-800',
+  disconnected: 'bg-gray-100 text-gray-600',
 } as const
 
 export const PLAYBACK_SPEEDS = [0.5, 1, 2, 5, 10] as const

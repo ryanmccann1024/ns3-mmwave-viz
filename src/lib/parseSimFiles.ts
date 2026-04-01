@@ -8,6 +8,8 @@ import type {
   BuildingState,
   FlowState,
   RouteState,
+  McsState,
+  RxPowerState,
 } from '../types'
 
 interface CsvRow {
@@ -144,10 +146,12 @@ export interface ParseFilesInput {
   flowsText?: string
   routesText?: string
   nodesJsonText?: string
+  mcsText?: string
+  rxPowerText?: string
 }
 
 export function parseFiles(input: ParseFilesInput): SimFrame[] {
-  const { linksText, posText, flowsText, routesText, nodesJsonText } = input
+  const { linksText, posText, flowsText, routesText, nodesJsonText, mcsText, rxPowerText } = input
 
   const posRows = parseCSV(posText)
   const linkRows = parseCSV(linksText)
@@ -217,7 +221,7 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
       sinr: sinr !== undefined && !isNaN(sinr) ? sinr : undefined,
       condition: normaliseCondition(field(r, 'condition')),
       conditionReason: field(r, 'condition_reason') || undefined,
-      connected: true,
+      connected: capRaw ? parseFloat(capRaw) > 0 : true,
       capacityMbps: capRaw ? parseFloat(capRaw) : undefined,
       deliveredMbps: delRaw ? parseFloat(delRaw) : undefined,
       hopCount: hopRaw ? parseInt(hopRaw) : undefined,
@@ -256,6 +260,37 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
     })
   }
 
+  // -- MCS --
+  const mcsByTime = new Map<number, McsState[]>()
+  if (mcsText) {
+    const mcsRows = parseCSV(mcsText)
+    for (const r of mcsRows) {
+      const t = parseFloat(field(r, 'time_s'))
+      if (!mcsByTime.has(t)) mcsByTime.set(t, [])
+      mcsByTime.get(t)!.push({
+        nodeA: parseInt(field(r, 'node_a')),
+        nodeB: parseInt(field(r, 'node_b')),
+        mcsIndex: parseInt(field(r, 'mcs_index')),
+        spectralEff: parseFloat(field(r, 'spectral_eff')),
+      })
+    }
+  }
+
+  // -- RX Power --
+  const rxPowerByTime = new Map<number, RxPowerState[]>()
+  if (rxPowerText) {
+    const rxRows = parseCSV(rxPowerText)
+    for (const r of rxRows) {
+      const t = parseFloat(field(r, 'time_s'))
+      if (!rxPowerByTime.has(t)) rxPowerByTime.set(t, [])
+      rxPowerByTime.get(t)!.push({
+        nodeA: parseInt(field(r, 'node_a')),
+        nodeB: parseInt(field(r, 'node_b')),
+        rxPowerDbm: parseFloat(field(r, 'rx_power_dbm')),
+      })
+    }
+  }
+
   // Detect gateway node from flow patterns and override node types
   const gatewayId = detectGatewayNode(flowsByTime)
   if (gatewayId !== null) {
@@ -275,6 +310,8 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
     links: linksByTime.get(t) ?? [],
     flows: flowsByTime.get(t) ?? [],
     routes: routesByTime.get(t) ?? [],
+    mcs: mcsByTime.get(t) ?? [],
+    rxPower: rxPowerByTime.get(t) ?? [],
   }))
 
   inferNodeTypes(frames)

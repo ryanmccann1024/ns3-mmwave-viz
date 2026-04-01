@@ -10,25 +10,31 @@ export function simToThree(
   x: number,
   y: number,
   z: number,
-  dim: 1 | 2 | 3 = 3
+  dim: 1 | 2 | 3 = 3,
+  posScale = 1
 ): [number, number, number] {
-  if (dim === 2) return [x, 0, y]
-  if (dim === 1) return [x, z, 0]
-  return [x, z, y]
+  const sx = x * posScale
+  const sy = y * posScale
+  const sz = z * posScale
+  if (dim === 2) return [sx, 0, sy]
+  if (dim === 1) return [sx, sz, 0]
+  return [sx, sz, sy]
 }
 
 export function interpPos(
   cur: NodeState,
   next: NodeState | undefined,
   alpha: number,
-  dim: 1 | 2 | 3 = 3
+  dim: 1 | 2 | 3 = 3,
+  posScale = 1
 ): [number, number, number] {
-  if (!next || alpha === 0) return simToThree(cur.x, cur.y, cur.z, dim)
+  if (!next || alpha === 0) return simToThree(cur.x, cur.y, cur.z, dim, posScale)
   return simToThree(
     cur.x + (next.x - cur.x) * alpha,
     cur.y + (next.y - cur.y) * alpha,
     cur.z + (next.z - cur.z) * alpha,
-    dim
+    dim,
+    posScale
   )
 }
 

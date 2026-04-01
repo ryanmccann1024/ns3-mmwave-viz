@@ -30,9 +30,11 @@ export default function outputsPlugin(): Plugin {
       } else if (
         entry.name === 'links.csv' ||
         entry.name === 'positions.csv' ||
-        entry.name === 'buildings.json' ||
+        (entry.name.startsWith('buildings') && entry.name.endsWith('.json')) ||
         entry.name === 'flows.csv' ||
         entry.name === 'routes.csv' ||
+        entry.name === 'mcs.csv' ||
+        entry.name === 'rx-power.csv' ||
         entry.name === 'nodes.json' ||
         entry.name === 'summary.json'
       ) {

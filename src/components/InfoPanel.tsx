@@ -230,7 +230,7 @@ export function InfoPanel({
   const hasFlows = frame.flows.length > 0
 
   return (
-    <div className="w-64 flex-shrink-0 bg-white border-l border-gray-200 flex flex-col hidden lg:flex">
+    <div className="w-72 min-w-[18rem] flex-shrink-0 bg-white border-l border-gray-200 flex flex-col hidden lg:flex">
       {/* Node list */}
       <div
         className={`flex flex-col ${showDetail || hasFlows ? 'flex-shrink-0 max-h-48' : 'flex-1'} overflow-y-auto`}
@@ -288,17 +288,17 @@ export function InfoPanel({
       {!showDetail && (
         <div className="p-3 border-t border-gray-100 bg-gray-50">
           <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Legend</div>
-          <div className="space-y-1 text-xs text-gray-500 font-mono">
+          <div className="space-y-1.5 text-xs text-gray-500 font-mono">
             <div className="flex items-center gap-2">
-              <span className="w-3 h-0.5 bg-emerald-500 inline-block" />
-              LOS connected
+              <span className="w-4 h-0.5 bg-emerald-500 inline-block" />
+              LOS (solid)
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-3 h-0.5 bg-orange-500 inline-block" />
-              NLOS connected
+              <span className="w-4 h-0 border-t-2 border-dashed border-yellow-500 inline-block" />
+              NLOS (dashed)
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-3 h-0 border-t border-dashed border-red-400 inline-block" />
+              <span className="w-4 h-0 border-t-2 border-dashed border-gray-400 inline-block" />
               Disconnected
             </div>
           </div>

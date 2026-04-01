@@ -20,6 +20,7 @@ interface Props {
   highlighted: boolean
   dimmed: boolean
   dim: 1 | 2 | 3
+  posScale?: number
   onClick: () => void
 }
 
@@ -34,6 +35,7 @@ export function LinkObject({
   highlighted,
   dimmed,
   dim,
+  posScale = 1,
   onClick,
 }: Props) {
   const lineRef = useRef<THREE.Line>(null)
@@ -54,8 +56,8 @@ export function LinkObject({
   // Update line endpoints when node positions change (per frame tick, not 60fps)
   useLayoutEffect(() => {
     if (!lineRef.current) return
-    const posA = simToThree(nodeA.x, nodeA.y, nodeA.z, dim)
-    const posB = simToThree(nodeB.x, nodeB.y, nodeB.z, dim)
+    const posA = simToThree(nodeA.x, nodeA.y, nodeA.z, dim, posScale)
+    const posB = simToThree(nodeB.x, nodeB.y, nodeB.z, dim, posScale)
     const arr = lineRef.current.geometry.attributes.position.array as Float32Array
     arr[0] = posA[0]
     arr[1] = posA[1]
@@ -108,7 +110,14 @@ export function LinkObject({
       </mesh>
 
       {(selected || highlighted) && !dimmed && (
-        <LabelAtMid nodeA={nodeA} nodeB={nodeB} dim={dim} color={color} link={link} />
+        <LabelAtMid
+          nodeA={nodeA}
+          nodeB={nodeB}
+          dim={dim}
+          posScale={posScale}
+          color={color}
+          link={link}
+        />
       )}
     </group>
   )
@@ -121,17 +130,19 @@ function LabelAtMid({
   nodeA,
   nodeB,
   dim,
+  posScale = 1,
   color,
   link,
 }: {
   nodeA: NodeState
   nodeB: NodeState
   dim: 1 | 2 | 3
+  posScale?: number
   color: string
   link: LinkState
 }) {
-  const posA = simToThree(nodeA.x, nodeA.y, nodeA.z, dim)
-  const posB = simToThree(nodeB.x, nodeB.y, nodeB.z, dim)
+  const posA = simToThree(nodeA.x, nodeA.y, nodeA.z, dim, posScale)
+  const posB = simToThree(nodeB.x, nodeB.y, nodeB.z, dim, posScale)
   const midPos: [number, number, number] = [
     (posA[0] + posB[0]) / 2,
     (posA[1] + posB[1]) / 2 + 6,
@@ -139,6 +150,7 @@ function LabelAtMid({
   ]
 
   const sinrPart = link.sinr !== undefined ? `  ${link.sinr.toFixed(1)} dB` : ''
+  const connPart = !link.connected ? ' (no capacity)' : ''
 
   return (
     <group position={midPos}>
@@ -151,7 +163,7 @@ function LabelAtMid({
         depthOffset={-2}
         raycast={() => null}
       >
-        {`${link.condition}${sinrPart}`}
+        {`${link.condition}${connPart}${sinrPart}`}
       </Text>
     </group>
   )

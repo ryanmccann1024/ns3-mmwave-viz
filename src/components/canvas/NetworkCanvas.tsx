@@ -12,6 +12,7 @@ interface Props {
   buildings: BuildingState[]
   sceneBounds: SceneBounds
   meta: SimMeta | null
+  compact?: boolean
   selectedNode: number | null
   selectedLink: string | null
   selectedFlow: { src: number; dst: number } | null
@@ -27,6 +28,7 @@ export function NetworkCanvas({
   buildings,
   sceneBounds,
   meta,
+  compact = false,
   selectedNode,
   selectedLink,
   selectedFlow,
@@ -52,6 +54,7 @@ export function NetworkCanvas({
         alphaRef={frameAlphaRef}
         buildings={buildings}
         sceneBounds={sceneBounds}
+        compact={compact}
         selectedNode={selectedNode}
         selectedLink={selectedLink}
         selectedFlow={selectedFlow}

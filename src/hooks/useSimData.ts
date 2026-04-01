@@ -72,6 +72,8 @@ export type UseSimDataReturn = SimDataState & {
     flowsFile?: File
     routesFile?: File
     nodesJsonFile?: File
+    mcsFile?: File
+    rxPowerFile?: File
   }) => void
   reset: () => void
   play: () => void
@@ -178,6 +180,8 @@ export function useSimData(): UseSimDataReturn {
       flowsFile?: File
       routesFile?: File
       nodesJsonFile?: File
+      mcsFile?: File
+      rxPowerFile?: File
     }) => {
       const readFile = (f: File) =>
         new Promise<string>((res) => {
@@ -195,31 +199,46 @@ export function useSimData(): UseSimDataReturn {
         optRead(files.flowsFile),
         optRead(files.routesFile),
         optRead(files.nodesJsonFile),
-      ]).then(([linksText, posText, buildingsText, flowsText, routesText, nodesJsonText]) => {
-        stopInterval()
-        const meta = parseMeta(posText)
-        const frames = parseFiles({
+        optRead(files.mcsFile),
+        optRead(files.rxPowerFile),
+      ]).then(
+        ([
           linksText,
           posText,
+          buildingsText,
           flowsText,
           routesText,
           nodesJsonText,
-        })
-        const buildings = buildingsText ? parseBuildings(buildingsText) : []
-        const sceneBounds = computeBounds(frames, buildings)
-        framesLenRef.current = frames.length
-        frameIndexRef.current = 0
-        frameAlphaRef.current = 0
-        setState({
-          frames,
-          frameIndex: 0,
-          playing: false,
-          speed: speedRef.current,
-          meta,
-          buildings,
-          sceneBounds,
-        })
-      })
+          mcsText,
+          rxPowerText,
+        ]) => {
+          stopInterval()
+          const meta = parseMeta(posText)
+          const frames = parseFiles({
+            linksText,
+            posText,
+            flowsText,
+            routesText,
+            nodesJsonText,
+            mcsText,
+            rxPowerText,
+          })
+          const buildings = buildingsText ? parseBuildings(buildingsText) : []
+          const sceneBounds = computeBounds(frames, buildings)
+          framesLenRef.current = frames.length
+          frameIndexRef.current = 0
+          frameAlphaRef.current = 0
+          setState({
+            frames,
+            frameIndex: 0,
+            playing: false,
+            speed: speedRef.current,
+            meta,
+            buildings,
+            sceneBounds,
+          })
+        }
+      )
     },
     [stopInterval]
   )

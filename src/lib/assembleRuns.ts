@@ -6,6 +6,7 @@ export interface RunEntry {
   day: string
   time: string
   seed: string
+  point?: string
   key: string
   linksFile: File
   posFile: File
@@ -13,6 +14,8 @@ export interface RunEntry {
   flowsFile?: File
   routesFile?: File
   nodesJsonFile?: File
+  mcsFile?: File
+  rxPowerFile?: File
 }
 
 export type FilePair = { path: string; file: File }
@@ -27,7 +30,20 @@ const SEED_LEVEL_FILES = new Set([
   'flows.csv',
   'routes.csv',
   'nodes.json',
+  'mcs.csv',
+  'rx-power.csv',
 ])
+
+function isKnownFile(fname: string): boolean {
+  if (SEED_LEVEL_FILES.has(fname)) return true
+  // Match buildings-*.json variants (e.g. buildings-wood.json, buildings-concrete.json)
+  if (fname.startsWith('buildings') && fname.endsWith('.json')) return true
+  return false
+}
+
+function isBuildingsFile(fname: string): boolean {
+  return fname.startsWith('buildings') && fname.endsWith('.json')
+}
 
 export function assembleRuns(pairs: FilePair[]): RunEntry[] {
   type Partial = {
@@ -35,6 +51,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
     day: string
     time: string
     seed: string
+    point?: string
     key: string
     links?: File
     pos?: File
@@ -42,6 +59,8 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
     flows?: File
     routes?: File
     nodesJson?: File
+    mcs?: File
+    rxPower?: File
   }
   const byKey = new Map<string, Partial>()
   const sharedBuildings = new Map<string, File>()
@@ -51,69 +70,111 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
     const parts = path.split('/')
     const fname = parts[parts.length - 1]
 
-    // Expected: YYYY-MM/DD/HH-MM-SS/seed-N/filename (4+ parts)
-    // or outputs/YYYY-MM/DD/HH-MM-SS/seed-N/filename (5+ parts)
-    if (SEED_LEVEL_FILES.has(fname)) {
+    // Seed-level files: .../YYYY-MM/DD/HH-MM-SS/seed-N/file
+    //               or: .../YYYY-MM/DD/HH-MM-SS/point-NNN/seed-N/file
+    if (isKnownFile(fname)) {
       const seedDir = parts[parts.length - 2]
       if (seedDir?.startsWith('seed-') && parts.length >= 4) {
-        const ymIdx = parts.length - 5
-        const dIdx = parts.length - 4
-        const tIdx = parts.length - 3
-        const ym = ymIdx >= 0 ? parts[ymIdx] : ''
-        const d = dIdx >= 0 ? parts[dIdx] : ''
-        const t = tIdx >= 0 ? parts[tIdx] : ''
-        const key = `${ym}/${d}/${t}/${seedDir}`
+        // Check if there's a point-NNN directory between timestamp and seed
+        const seedIdx = parts.length - 2
+        const beforeSeed = parts[seedIdx - 1]
+        const hasPoint = beforeSeed?.startsWith('point-')
 
-        if (!byKey.has(key)) byKey.set(key, { yearMonth: ym, day: d, time: t, seed: seedDir, key })
+        const timeIdx = hasPoint ? seedIdx - 2 : seedIdx - 1
+        const dayIdx = timeIdx - 1
+        const ymIdx = timeIdx - 2
+
+        if (ymIdx < 0) continue
+
+        const ym = parts[ymIdx]
+        const d = parts[dayIdx]
+        const t = parts[timeIdx]
+        const point = hasPoint ? beforeSeed : undefined
+        const key = hasPoint
+          ? `${ym}/${d}/${t}/${beforeSeed}/${seedDir}`
+          : `${ym}/${d}/${t}/${seedDir}`
+
+        if (!byKey.has(key))
+          byKey.set(key, { yearMonth: ym, day: d, time: t, seed: seedDir, point, key })
         const entry = byKey.get(key)!
         if (fname === 'links.csv') entry.links = file
         if (fname === 'positions.csv') entry.pos = file
-        if (fname === 'buildings.json') entry.buildings = file
+        if (isBuildingsFile(fname)) entry.buildings = file
         if (fname === 'flows.csv') entry.flows = file
         if (fname === 'routes.csv') entry.routes = file
         if (fname === 'nodes.json') entry.nodesJson = file
+        if (fname === 'mcs.csv') entry.mcs = file
+        if (fname === 'rx-power.csv') entry.rxPower = file
       }
     }
 
-    // Also check for buildings.json / nodes.json inside inputs/ subfolder at the timestamp level:
-    // YYYY-MM/DD/HH-MM-SS/inputs/buildings.json
-    if (fname === 'buildings.json' || fname === 'nodes.json') {
+    // Also check for buildings*.json / nodes.json inside inputs/ subfolder:
+    // Timestamp level: YYYY-MM/DD/HH-MM-SS/inputs/buildings*.json
+    // Point level:     YYYY-MM/DD/HH-MM-SS/point-NNN/inputs/buildings*.json
+    if (isBuildingsFile(fname) || fname === 'nodes.json') {
       const parentDir = parts[parts.length - 2]
       if (parentDir === 'inputs' || parentDir === 'input') {
-        const tIdx = parts.length - 3
-        const dIdx = parts.length - 4
-        const ymIdx = parts.length - 5
+        // Check if this is point-level or timestamp-level
+        const aboveInputs = parts[parts.length - 3]
+        const isPointLevel = aboveInputs?.startsWith('point-')
+
+        let ymIdx: number, dIdx: number, tIdx: number
+        let pointDir: string | undefined
+        if (isPointLevel) {
+          pointDir = aboveInputs
+          tIdx = parts.length - 4
+          dIdx = parts.length - 5
+          ymIdx = parts.length - 6
+        } else {
+          tIdx = parts.length - 3
+          dIdx = parts.length - 4
+          ymIdx = parts.length - 5
+        }
+
         if (tIdx >= 0 && dIdx >= 0) {
           const time = parts[tIdx]
           const day = parts[dIdx]
           const yearMonth = ymIdx >= 0 ? parts[ymIdx] : ''
-          const tsKey = `${yearMonth}/${day}/${time}`
-          // Apply to ALL seed runs under this timestamp
+
+          // Build a shared key — include point if present
+          const sharedKey = pointDir
+            ? `${yearMonth}/${day}/${time}/${pointDir}`
+            : `${yearMonth}/${day}/${time}`
+
+          // Apply to matching seed runs already discovered
           for (const entry of byKey.values()) {
-            if (entry.yearMonth === yearMonth && entry.day === day && entry.time === time) {
-              if (fname === 'buildings.json' && !entry.buildings) entry.buildings = file
+            const matches =
+              entry.yearMonth === yearMonth &&
+              entry.day === day &&
+              entry.time === time &&
+              (!pointDir || entry.point === pointDir)
+            if (matches) {
+              if (isBuildingsFile(fname) && !entry.buildings) entry.buildings = file
               if (fname === 'nodes.json' && !entry.nodesJson) entry.nodesJson = file
             }
           }
           // Stash for runs discovered later in the loop
-          if (fname === 'buildings.json' && !sharedBuildings.has(tsKey))
-            sharedBuildings.set(tsKey, file)
-          if (fname === 'nodes.json' && !sharedNodesJson.has(tsKey))
-            sharedNodesJson.set(tsKey, file)
+          if (isBuildingsFile(fname) && !sharedBuildings.has(sharedKey))
+            sharedBuildings.set(sharedKey, file)
+          if (fname === 'nodes.json' && !sharedNodesJson.has(sharedKey))
+            sharedNodesJson.set(sharedKey, file)
         }
       }
     }
   }
 
-  // Apply shared (timestamp-level) files to any runs that don't have them yet
+  // Apply shared files to any runs that don't have them yet
   for (const entry of byKey.values()) {
     const tsKey = `${entry.yearMonth}/${entry.day}/${entry.time}`
+    const ptKey = entry.point ? `${tsKey}/${entry.point}` : null
+
     if (!entry.buildings) {
-      const shared = sharedBuildings.get(tsKey)
+      // Try point-level first, then timestamp-level
+      const shared = (ptKey ? sharedBuildings.get(ptKey) : undefined) ?? sharedBuildings.get(tsKey)
       if (shared) entry.buildings = shared
     }
     if (!entry.nodesJson) {
-      const shared = sharedNodesJson.get(tsKey)
+      const shared = (ptKey ? sharedNodesJson.get(ptKey) : undefined) ?? sharedNodesJson.get(tsKey)
       if (shared) entry.nodesJson = shared
     }
   }
@@ -126,6 +187,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         day: e.day,
         time: e.time,
         seed: e.seed,
+        point: e.point,
         key: e.key,
         linksFile: e.links!,
         posFile: e.pos!,
@@ -133,6 +195,8 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         flowsFile: e.flows,
         routesFile: e.routes,
         nodesJsonFile: e.nodesJson,
+        mcsFile: e.mcs,
+        rxPowerFile: e.rxPower,
       })
   }
   return runs.sort((a, b) => b.key.localeCompare(a.key))
@@ -184,7 +248,7 @@ export async function walkDirectory(
     const path = prefix ? `${prefix}/${name}` : name
     if (entry.kind === 'file') {
       // Only materialise files we care about (avoid reading every file)
-      if (SEED_LEVEL_FILES.has(name)) {
+      if (isKnownFile(name)) {
         const file = await (entry as FileSystemFileHandle).getFile()
         pairs.push({ path, file })
       }

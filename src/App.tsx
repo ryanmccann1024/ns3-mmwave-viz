@@ -20,6 +20,7 @@ export default function App() {
   const [selectedFlow, setSelectedFlow] = useState<{ src: number; dst: number } | null>(null)
   const [terminalOpen, setTerminalOpen] = useState(true)
   const [activeView, setActiveView] = useState<'canvas' | 'charts' | 'split'>('canvas')
+  const [compact, setCompact] = useState(false)
 
   // Log when files are loaded; clear log on each new load
   const prevLoadedRef = useRef(false)
@@ -141,6 +142,8 @@ export default function App() {
       flowsFile: run.flowsFile,
       routesFile: run.routesFile,
       nodesJsonFile: run.nodesJsonFile,
+      mcsFile: run.mcsFile,
+      rxPowerFile: run.rxPowerFile,
     })
   }
 
@@ -153,6 +156,8 @@ export default function App() {
             meta={sim.meta}
             activeView={activeView}
             onChangeView={setActiveView}
+            compact={compact}
+            onToggleCompact={() => setCompact((c) => !c)}
             onChangeSim={() => {
               setSelectedNode(null)
               setSelectedLink(null)
@@ -174,6 +179,7 @@ export default function App() {
                   buildings={sim.buildings}
                   sceneBounds={sim.sceneBounds}
                   meta={sim.meta}
+                  compact={compact}
                   selectedNode={selectedNode}
                   selectedLink={selectedLink}
                   selectedFlow={selectedFlow}

@@ -9,31 +9,46 @@ interface Props {
   flow: FlowState | undefined
   nodeMap: Map<number, NodeState>
   dim: 1 | 2 | 3
+  flowIndex: number
+  posScale?: number
 }
 
 const PULSE_COUNT = 3
+const MIN_RADIUS = 1.0
+const MAX_RADIUS = 3.5
+const MAX_DEMAND = 500 // Mbps cap for scaling
+const MIN_SPEED = 0.002
+const MAX_SPEED = 0.02
+const Y_OFFSET_BASE = 2
+const Y_OFFSET_STEP = 2.5
 
-function deliveryColor(flow: FlowState | undefined): string {
-  if (!flow || flow.demandMbps === 0) return '#9ca3af'
-  const ratio = flow.deliveredMbps / flow.demandMbps
-  if (ratio > 0.8) return '#16a34a' // green
-  if (ratio > 0.4) return '#eab308' // yellow
-  return '#dc2626' // red
-}
+// Distinct colors per flow so multiple flows on the same link are distinguishable
+const FLOW_PALETTE = [
+  '#0ea5e9', // sky
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#a855f7', // purple
+  '#f43f5e', // rose
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#ec4899', // pink
+]
 
-export function TrafficFlow({ route, flow, nodeMap, dim }: Props) {
+export function TrafficFlow({ route, flow, nodeMap, dim, flowIndex, posScale = 1 }: Props) {
   const meshRefs = useRef<(THREE.Mesh | null)[]>([])
   const progressRef = useRef<number[]>(
     Array.from({ length: PULSE_COUNT }, (_, i) => i / PULSE_COUNT)
   )
+
+  const yOffset = Y_OFFSET_BASE + flowIndex * Y_OFFSET_STEP
 
   // Build polyline path from route node IDs
   const pathPositions: THREE.Vector3[] = []
   for (const nodeId of route.path) {
     const node = nodeMap.get(nodeId)
     if (node) {
-      const [x, y, z] = simToThree(node.x, node.y, node.z, dim)
-      pathPositions.push(new THREE.Vector3(x, y + 2, z)) // slight offset above links
+      const [x, y, z] = simToThree(node.x, node.y, node.z, dim, posScale)
+      pathPositions.push(new THREE.Vector3(x, y + yOffset, z))
     }
   }
 
@@ -46,9 +61,14 @@ export function TrafficFlow({ route, flow, nodeMap, dim }: Props) {
     totalLength += d
   }
 
-  const color = deliveryColor(flow)
-  const pulseSpeed =
-    0.005 + (route.bottleneckMbps > 0 ? Math.min(route.bottleneckMbps / 2000, 0.01) : 0)
+  const color = FLOW_PALETTE[flowIndex % FLOW_PALETTE.length]
+  const demand = flow?.demandMbps ?? 0
+  const delivered = flow?.deliveredMbps ?? 0
+  const radius = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.min(demand / MAX_DEMAND, 1)
+  const pulseSpeed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.min(delivered / MAX_DEMAND, 1)
+  // Dim opacity when delivery is poor
+  const deliveryRatio = demand > 0 ? delivered / demand : 0
+  const opacity = deliveryRatio > 0.4 ? 0.85 : 0.5
 
   useFrame(() => {
     if (totalLength === 0 || pathPositions.length < 2) return
@@ -85,13 +105,13 @@ export function TrafficFlow({ route, flow, nodeMap, dim }: Props) {
           }}
           position={pathPositions[0]}
         >
-          <sphereGeometry args={[1.8, 8, 6]} />
+          <sphereGeometry args={[radius, 8, 6]} />
           <meshStandardMaterial
             color={color}
             emissive={color}
             emissiveIntensity={0.6}
             transparent
-            opacity={0.8}
+            opacity={opacity}
           />
         </mesh>
       ))}

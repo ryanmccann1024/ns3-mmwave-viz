@@ -240,6 +240,11 @@ export function FileLoader({ onLoad }: Props) {
                         <div className="flex items-center gap-2">
                           <span className="text-gray-300 text-xs">└</span>
                           <span className="text-sky-600 text-sm font-mono">{run.time}</span>
+                          {run.point && (
+                            <span className="text-[10px] text-violet-600 font-mono bg-violet-50 border border-violet-100 rounded px-1">
+                              {run.point}
+                            </span>
+                          )}
                           <span className="text-gray-400 text-xs font-mono">{run.seed}</span>
                         </div>
                         {run.buildingsFile && (

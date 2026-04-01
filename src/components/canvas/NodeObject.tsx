@@ -21,6 +21,7 @@ interface Props {
   highlighted: boolean
   dimmed: boolean
   dim: 1 | 2 | 3
+  posScale?: number
   onClick: () => void
 }
 
@@ -32,6 +33,7 @@ export function NodeObject({
   highlighted,
   dimmed,
   dim,
+  posScale = 1,
   onClick,
 }: Props) {
   const inactive = !node.active
@@ -61,7 +63,7 @@ export function NodeObject({
       : new THREE.Euler(0, 0, 0)
 
   const label = NODE_LABELS[node.nodeType]
-  const position = simToThree(node.x, node.y, node.z, dim)
+  const position = simToThree(node.x, node.y, node.z, dim, posScale)
 
   return (
     <group

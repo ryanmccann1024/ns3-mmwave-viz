@@ -83,6 +83,8 @@ export interface SimFrame {
   links: LinkState[]
   flows: FlowState[]
   routes: RouteState[]
+  mcs: McsState[]
+  rxPower: RxPowerState[]
 }
 
 export interface SimMeta {

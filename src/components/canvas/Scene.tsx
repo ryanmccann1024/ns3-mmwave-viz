@@ -23,6 +23,7 @@ interface Props {
   dimensions: 1 | 2 | 3
   buildings: BuildingState[]
   sceneBounds: SceneBounds
+  compact?: boolean
   rainRate: number
   scenario: string
 }
@@ -39,6 +40,7 @@ export function Scene({
   dimensions,
   buildings,
   sceneBounds,
+  compact = false,
   rainRate,
   scenario,
 }: Props) {
@@ -79,9 +81,15 @@ export function Scene({
     return s
   }, [selectedNode, selectedLink, links])
 
-  const sceneCX = sceneBounds.cx
-  const sceneCY = sceneBounds.cy
-  const gs = sceneBounds.gridSize
+  // Compact mode: compress distances between nodes toward the centroid
+  // so far-apart nodes appear closer and easier to see
+  const COMPACT_TARGET = 250
+  const rawGs = sceneBounds.gridSize
+  const compactFactor = compact && rawGs > COMPACT_TARGET ? COMPACT_TARGET / rawGs : 1
+  const gs = compact ? Math.min(rawGs, COMPACT_TARGET) : rawGs
+
+  const sceneCX = sceneBounds.cx * compactFactor
+  const sceneCY = sceneBounds.cy * compactFactor
 
   // Scale camera distance and controls with scene size
   const scale = gs / 500 // 1.0 for default 500-unit scenes
@@ -143,14 +151,14 @@ export function Scene({
       <SceneEnvironment
         sceneCX={sceneCX}
         sceneCY={sceneCY}
-        gridSize={sceneBounds.gridSize}
-        planeSize={sceneBounds.planeSize}
+        gridSize={gs}
+        planeSize={sceneBounds.planeSize * compactFactor}
         scenario={scenario}
       />
 
       {/* Buildings */}
       {buildings.map((b) => (
-        <BuildingObject key={b.id} building={b} dim={dimensions} />
+        <BuildingObject key={b.id} building={b} dim={dimensions} posScale={compactFactor} />
       ))}
 
       {/* Links (rendered before nodes so nodes draw on top) */}
@@ -174,6 +182,7 @@ export function Scene({
             highlighted={hi}
             dimmed={hasSelection && !sel && !hi}
             dim={dimensions}
+            posScale={compactFactor}
             onClick={() => {
               onSelectLink(sel ? null : key)
               onSelectNode(null)
@@ -184,7 +193,12 @@ export function Scene({
 
       {/* Traffic flow pulses */}
       {frame.routes.length > 0 && (
-        <TrafficLayer frame={frame} selectedFlow={selectedFlow} dim={dimensions} />
+        <TrafficLayer
+          frame={frame}
+          selectedFlow={selectedFlow}
+          dim={dimensions}
+          posScale={compactFactor}
+        />
       )}
 
       {/* Nodes */}
@@ -201,6 +215,7 @@ export function Scene({
             highlighted={hi}
             dimmed={hasSelection && !sel && !hi}
             dim={dimensions}
+            posScale={compactFactor}
             onClick={() => {
               onSelectNode(sel ? null : n.id)
               onSelectLink(null)
