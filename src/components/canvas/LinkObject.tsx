@@ -38,7 +38,6 @@ export function LinkObject({
   onClick,
 }: Props) {
   const lineRef = useRef<THREE.Line>(null)
-  const nlosGroupRef = useRef<THREE.Group>(null)
   const midMeshRef = useRef<THREE.Mesh>(null)
 
   const color = linkColor(link)
@@ -76,13 +75,6 @@ export function LinkObject({
       }
     }
 
-    if (nlosGroupRef.current) {
-      const dx = posB[0] - posA[0]
-      const dz = posB[2] - posA[2]
-      nlosGroupRef.current.position.set(mid[0], mid[1], mid[2])
-      nlosGroupRef.current.rotation.y = Math.atan2(dx, dz)
-    }
-
     if (midMeshRef.current) {
       midMeshRef.current.position.set(mid[0], mid[1], mid[2])
     }
@@ -109,21 +101,6 @@ export function LinkObject({
           />
         )}
       </primitive>
-
-      {!isLos && link.connected && (
-        <group ref={nlosGroupRef}>
-          <mesh>
-            <planeGeometry args={[14, 18]} />
-            <meshBasicMaterial
-              color="#f97316"
-              transparent
-              opacity={dimmed ? 0.03 : 0.16}
-              depthWrite={false}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        </group>
-      )}
 
       {/* Invisible hit sphere at midpoint for click detection */}
       <mesh

@@ -68,14 +68,14 @@ time_s,node_a,node_b,dist_m,pathloss_dB,rx_power_dBm,condition
 Both files must live inside a directory tree with the structure:
 
 ```
-data/
-  YYYY/
-    MM/
-      DD/
-        HHMMSS<ms>/
-          output/
-            links.csv
-            positions.csv
+outputs/
+  YYYY-MM/
+    DD/
+      HH-MM-SS/
+        seed-N/
+          links.csv
+          positions.csv
+          buildings.json   (optional)
 ```
 
 ## Loading a Simulation
@@ -129,8 +129,6 @@ data/
 | Orange (dashed) | NLOS connected |
 | Red (dashed) | Disconnected (below threshold) |
 
-The semi-transparent orange plane on NLOS links represents the obstructing object between the two nodes.
-
 ## Terminal / Event Log
 
 A collapsible terminal at the bottom of the screen logs simulation events in real time:
@@ -159,25 +157,30 @@ src/
 ├── styles/tokens.ts             Design tokens (colors, sizes, labels)
 ├── types.ts                     Shared TypeScript interfaces
 ├── hooks/
-│   ├── useSimData.ts            CSV parsing, playback state machine
+│   ├── useSimData.ts            Playback state machine, scene bounds
 │   └── useSimLog.ts             In-memory event log (500 entry cap)
+├── lib/
+│   ├── parseSimFiles.ts         CSV/JSON parsing (positions, links, buildings, meta)
+│   ├── assembleRuns.ts          Directory traversal, run discovery, dev-server fetch
+│   ├── format.ts                Shared formatting helpers (freqLabel)
+│   ├── directoryCache.ts        IndexedDB persistence for FSA directory handles
+│   └── fsaTypes.d.ts            TypeScript augmentations for File System Access API
 ├── components/
-│   ├── canvas/                  Three.js scene (split from original monolith)
+│   ├── canvas/                  Three.js scene components
 │   │   ├── NetworkCanvas.tsx    Thin <Canvas> wrapper
 │   │   ├── Scene.tsx            useMemo derivations, node/link mapping
 │   │   ├── NodeObject.tsx       Per-node mesh + label + selection ring
-│   │   ├── LinkObject.tsx       Per-link line + NLOS plane + label
+│   │   ├── LinkObject.tsx       Per-link line + label
 │   │   ├── NodeShape.tsx        Geometry-only sub-component
-│   │   ├── NlosBlocker.tsx      Semi-transparent orange NLOS plane
+│   │   ├── BuildingObject.tsx   3D building boxes
 │   │   ├── SceneEnvironment.tsx Lights, ground plane, grid
 │   │   └── utils/
 │   │       ├── coordinates.ts   simToThree, interpPos, headingRotation
 │   │       └── linkColors.ts    linkColor(), linkKey()
 │   ├── ui/                      Reusable primitives
-│   │   ├── Button.tsx
+│   │   ├── Button.tsx           Variants: primary, ghost, icon-round, link
 │   │   ├── Badge.tsx
 │   │   ├── StatItem.tsx
-│   │   ├── Panel.tsx
 │   │   ├── Row.tsx
 │   │   └── Terminal.tsx
 │   ├── FileLoader.tsx

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-type Variant = 'primary' | 'ghost' | 'icon-round'
+type Variant = 'primary' | 'ghost' | 'icon-round' | 'link'
 
 interface Props {
   variant?: Variant
@@ -19,12 +19,14 @@ const BASE: Record<Variant, string> = {
     'px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors bg-gray-100 text-gray-500 hover:text-gray-900 border border-gray-200',
   'icon-round':
     'w-9 h-9 flex items-center justify-center rounded-full bg-sky-500 hover:bg-sky-600 transition-colors text-white flex-shrink-0',
+  link: 'text-xs text-gray-400 hover:text-gray-600 transition-colors',
 }
 
 const ACTIVE: Record<Variant, string> = {
   primary: '',
   ghost: 'bg-sky-500 text-white border-sky-500',
   'icon-round': '',
+  link: '',
 }
 
 export function Button({
