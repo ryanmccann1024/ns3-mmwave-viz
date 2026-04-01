@@ -1,5 +1,3 @@
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text, Line } from '@react-three/drei'
 import type { NodeState } from '../../types'
@@ -11,7 +9,7 @@ import {
   NODE_COLOR_DIMMED,
   NODE_COLOR_SELECTED,
 } from '../../styles/tokens'
-import { interpPos, headingRotation } from './utils/coordinates'
+import { simToThree, headingRotation } from './utils/coordinates'
 import { NodeShape } from './NodeShape'
 
 interface Props {
@@ -28,7 +26,7 @@ interface Props {
 
 export function NodeObject({
   node,
-  nextNode: _nextNode,
+  nextNode,
   alphaRef: _alphaRef,
   selected,
   highlighted,
@@ -36,7 +34,6 @@ export function NodeObject({
   dim,
   onClick,
 }: Props) {
-  const groupRef = useRef<THREE.Group>(null)
   const inactive = !node.active
   const size = NODE_SIZES[node.nodeType]
 
@@ -60,21 +57,15 @@ export function NodeObject({
 
   const rotation =
     node.nodeType === 'air' || node.nodeType === 'vehicle'
-      ? headingRotation(node, _nextNode, dim)
+      ? headingRotation(node, nextNode, dim)
       : new THREE.Euler(0, 0, 0)
 
   const label = NODE_LABELS[node.nodeType]
-
-  // Imperatively update position every frame — avoids 60fps React re-renders
-  useFrame(() => {
-    if (!groupRef.current) return
-    const [px, py, pz] = interpPos(node, undefined, 0, dim)
-    groupRef.current.position.set(px, py, pz)
-  })
+  const position = simToThree(node.x, node.y, node.z, dim)
 
   return (
     <group
-      ref={groupRef}
+      position={position}
       onClick={(e) => {
         e.stopPropagation()
         onClick()

@@ -1,13 +1,12 @@
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useRef, useMemo, useLayoutEffect } from 'react'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
 import type { LinkState, NodeState } from '../../types'
-import { interpPos } from './utils/coordinates'
+import { simToThree } from './utils/coordinates'
 import { linkColor } from './utils/linkColors'
 
 // We use a raw THREE.Line with LineDashedMaterial so positions can be
-// updated imperatively via useFrame without going through React state.
+// updated imperatively without going through React state.
 
 interface Props {
   link: LinkState
@@ -45,49 +44,43 @@ export function LinkObject({
   const isLos = link.condition === 'LOS'
   const lineWidth = selected ? 3 : highlighted ? 2.5 : isLos ? 2 : 1.5
 
-  // Initialise geometry with dummy positions; useFrame keeps it current
-  const geom = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(1, 1, 1),
-  ])
+  // Create geometry and line object once
+  const lineObj = useMemo(() => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3))
+    return new THREE.Line(g)
+  }, [])
 
-  // Imperatively move endpoints every frame
-  useFrame(() => {
-    const posA = interpPos(nodeA, undefined, 0, dim)
-    const posB = interpPos(nodeB, undefined, 0, dim)
-    const mid: [number, number, number] = [
-      (posA[0] + posB[0]) / 2,
-      (posA[1] + posB[1]) / 2,
-      (posA[2] + posB[2]) / 2,
-    ]
+  // Update line endpoints when node positions change (per frame tick, not 60fps)
+  useLayoutEffect(() => {
+    if (!lineRef.current) return
+    const posA = simToThree(nodeA.x, nodeA.y, nodeA.z, dim)
+    const posB = simToThree(nodeB.x, nodeB.y, nodeB.z, dim)
+    const arr = lineRef.current.geometry.attributes.position.array as Float32Array
+    arr[0] = posA[0]
+    arr[1] = posA[1]
+    arr[2] = posA[2]
+    arr[3] = posB[0]
+    arr[4] = posB[1]
+    arr[5] = posB[2]
+    lineRef.current.geometry.attributes.position.needsUpdate = true
 
-    if (lineRef.current) {
-      const arr = lineRef.current.geometry.attributes.position.array as Float32Array
-      arr[0] = posA[0]
-      arr[1] = posA[1]
-      arr[2] = posA[2]
-      arr[3] = posB[0]
-      arr[4] = posB[1]
-      arr[5] = posB[2]
-      lineRef.current.geometry.attributes.position.needsUpdate = true
-      if (!isLos) {
-        ;(lineRef.current as THREE.Line).computeLineDistances()
-      }
+    if (!isLos) {
+      lineRef.current.computeLineDistances()
     }
 
     if (midMeshRef.current) {
-      midMeshRef.current.position.set(mid[0], mid[1], mid[2])
+      midMeshRef.current.position.set(
+        (posA[0] + posB[0]) / 2,
+        (posA[1] + posB[1]) / 2,
+        (posA[2] + posB[2]) / 2
+      )
     }
   })
 
   return (
     <group>
-      <primitive
-        ref={lineRef}
-        object={Object.assign(new THREE.Line(geom), {
-          // We return a new Line each render but React reconciles by ref identity
-        })}
-      >
+      <primitive ref={lineRef} object={lineObj}>
         {isLos ? (
           <lineBasicMaterial color={color} transparent opacity={opacity} linewidth={lineWidth} />
         ) : (
@@ -115,60 +108,40 @@ export function LinkObject({
       </mesh>
 
       {(selected || highlighted) && !dimmed && (
-        <LabelAtMid
-          nodeA={nodeA}
-          nextA={_nextA}
-          nodeB={nodeB}
-          nextB={_nextB}
-          alphaRef={_alphaRef}
-          dim={dim}
-          color={color}
-          link={link}
-        />
+        <LabelAtMid nodeA={nodeA} nodeB={nodeB} dim={dim} color={color} link={link} />
       )}
     </group>
   )
 }
 
 // -------------------------------------------------------------------------
-// Separate component so useFrame runs only when label is visible
+// Label positioned at link midpoint — only mounted when visible
 // -------------------------------------------------------------------------
 function LabelAtMid({
   nodeA,
-  nextA: _nextA,
   nodeB,
-  nextB: _nextB,
-  alphaRef: _alphaRef,
   dim,
   color,
   link,
 }: {
   nodeA: NodeState
-  nextA: NodeState | undefined
   nodeB: NodeState
-  nextB: NodeState | undefined
-  alphaRef: React.MutableRefObject<number>
   dim: 1 | 2 | 3
   color: string
   link: LinkState
 }) {
-  const textRef = useRef<THREE.Group>(null)
-
-  useFrame(() => {
-    if (!textRef.current) return
-    const posA = interpPos(nodeA, undefined, 0, dim)
-    const posB = interpPos(nodeB, undefined, 0, dim)
-    textRef.current.position.set(
-      (posA[0] + posB[0]) / 2,
-      (posA[1] + posB[1]) / 2 + 6,
-      (posA[2] + posB[2]) / 2
-    )
-  })
+  const posA = simToThree(nodeA.x, nodeA.y, nodeA.z, dim)
+  const posB = simToThree(nodeB.x, nodeB.y, nodeB.z, dim)
+  const midPos: [number, number, number] = [
+    (posA[0] + posB[0]) / 2,
+    (posA[1] + posB[1]) / 2 + 6,
+    (posA[2] + posB[2]) / 2,
+  ]
 
   const sinrPart = link.sinr !== undefined ? `  ${link.sinr.toFixed(1)} dB` : ''
 
   return (
-    <group ref={textRef}>
+    <group position={midPos}>
       <Text
         fontSize={4}
         color={color}

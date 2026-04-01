@@ -2,6 +2,7 @@ import { Canvas } from '@react-three/fiber'
 import type { SimFrame, BuildingState, SimMeta } from '../../types'
 import type { SceneBounds } from '../../hooks/useSimData'
 import { Scene } from './Scene'
+import { getScenarioTheme } from '../../styles/scenarioThemes'
 
 interface Props {
   frame: SimFrame
@@ -33,9 +34,12 @@ export function NetworkCanvas({
   onSelectLink,
   dimensions = 3,
 }: Props) {
+  const scenario = meta?.scenario ?? ''
+  const theme = getScenarioTheme(scenario)
+
   return (
     <Canvas
-      style={{ background: '#ffffff' }}
+      style={{ background: theme.canvasBackground }}
       frameloop="always"
       onPointerMissed={() => {
         onSelectNode(null)
@@ -55,6 +59,7 @@ export function NetworkCanvas({
         onSelectLink={onSelectLink}
         dimensions={dimensions}
         rainRate={meta?.rainRate ?? 0}
+        scenario={scenario}
       />
     </Canvas>
   )

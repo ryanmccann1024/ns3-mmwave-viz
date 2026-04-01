@@ -24,6 +24,7 @@ interface Props {
   buildings: BuildingState[]
   sceneBounds: SceneBounds
   rainRate: number
+  scenario: string
 }
 
 export function Scene({
@@ -39,6 +40,7 @@ export function Scene({
   buildings,
   sceneBounds,
   rainRate,
+  scenario,
 }: Props) {
   const { nodes, links } = frame
 
@@ -143,6 +145,7 @@ export function Scene({
         sceneCY={sceneCY}
         gridSize={sceneBounds.gridSize}
         planeSize={sceneBounds.planeSize}
+        scenario={scenario}
       />
 
       {/* Buildings */}
