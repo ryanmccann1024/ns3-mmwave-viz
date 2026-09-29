@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import type { SimFrame, SimMeta, BuildingState } from '../types'
+import type { SimFrame, SimMeta, BuildingState, JammerState } from '../types'
 import { parseMeta, parseBuildings, parseFiles } from '../lib/parseSimFiles'
+import { parseJammers, jammerPositionAt } from '../lib/jammers'
 
 export type PlaybackSpeed = 0.5 | 1 | 2 | 5 | 10
 
@@ -9,21 +10,29 @@ export interface SceneBounds {
   cy: number
   gridSize: number
   planeSize: number
+  /** width of the area the nodes actually use, for framing the camera */
+  viewSpan: number
 }
 
-const DEFAULT_BOUNDS: SceneBounds = { cx: 75, cy: 75, gridSize: 500, planeSize: 600 }
+const DEFAULT_BOUNDS: SceneBounds = { cx: 75, cy: 75, gridSize: 500, planeSize: 600, viewSpan: 500 }
 
 interface SimDataState {
   frames: SimFrame[]
   frameIndex: number
   playing: boolean
   speed: PlaybackSpeed
+  compact: boolean
   meta: SimMeta | null
   buildings: BuildingState[]
+  jammers: JammerState[]
   sceneBounds: SceneBounds
 }
 
-function computeBounds(frames: SimFrame[], buildings: BuildingState[]): SceneBounds {
+function computeBounds(
+  frames: SimFrame[],
+  buildings: BuildingState[],
+  jammers: JammerState[]
+): SceneBounds {
   let minX = Infinity,
     maxX = -Infinity,
     minY = Infinity,
@@ -47,6 +56,13 @@ function computeBounds(frames: SimFrame[], buildings: BuildingState[]): SceneBou
     if (bMinY < minY) minY = bMinY
     if (bMaxY > maxY) maxY = bMaxY
   }
+  for (const jammer of jammers) {
+    const { x, y } = jammerPositionAt(jammer, frames[0]?.time ?? 0)
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
 
   if (!isFinite(minX)) return DEFAULT_BOUNDS
 
@@ -55,8 +71,11 @@ function computeBounds(frames: SimFrame[], buildings: BuildingState[]): SceneBou
   const maxSpan = Math.max(maxX - minX, maxY - minY)
   const gridSize = Math.max(500, Math.ceil((maxSpan * 1.3) / 50) * 50)
   const planeSize = gridSize * 1.2
+  // The ground keeps its 500 m minimum, but the camera frames the nodes: small RL
+  // scenes (tens of metres) would otherwise open as specks in a large empty plane
+  const viewSpan = Math.min(gridSize, Math.max(120, maxSpan * 1.6))
 
-  return { cx, cy, gridSize, planeSize }
+  return { cx, cy, gridSize, planeSize, viewSpan }
 }
 
 export type UseSimDataReturn = SimDataState & {
@@ -72,6 +91,7 @@ export type UseSimDataReturn = SimDataState & {
     flowsFile?: File
     routesFile?: File
     nodesJsonFile?: File
+    jammersJsonFile?: File
     mcsFile?: File
     rxPowerFile?: File
   }) => void
@@ -80,6 +100,7 @@ export type UseSimDataReturn = SimDataState & {
   pause: () => void
   seek: (index: number) => void
   setSpeed: (speed: PlaybackSpeed) => void
+  setCompact: (compact: boolean) => void
 }
 
 // -------------------------------------------------------------------------
@@ -91,8 +112,10 @@ export function useSimData(): UseSimDataReturn {
     frameIndex: 0,
     playing: false,
     speed: 1,
+    compact: false,
     meta: null,
     buildings: [],
+    jammers: [],
     sceneBounds: DEFAULT_BOUNDS,
   })
 
@@ -102,6 +125,7 @@ export function useSimData(): UseSimDataReturn {
   const framesLenRef = useRef(0)
   const frameIndexRef = useRef(0)
   const speedRef = useRef<PlaybackSpeed>(1)
+  const compactRef = useRef(false)
   const tickMsRef = useRef(100)
   /** Updated every RAF tick — read in R3F useFrame for smooth interpolation */
   const frameAlphaRef = useRef(0)
@@ -180,6 +204,7 @@ export function useSimData(): UseSimDataReturn {
       flowsFile?: File
       routesFile?: File
       nodesJsonFile?: File
+      jammersJsonFile?: File
       mcsFile?: File
       rxPowerFile?: File
     }) => {
@@ -199,6 +224,7 @@ export function useSimData(): UseSimDataReturn {
         optRead(files.flowsFile),
         optRead(files.routesFile),
         optRead(files.nodesJsonFile),
+        optRead(files.jammersJsonFile),
         optRead(files.mcsFile),
         optRead(files.rxPowerFile),
       ]).then(
@@ -209,6 +235,7 @@ export function useSimData(): UseSimDataReturn {
           flowsText,
           routesText,
           nodesJsonText,
+          jammersJsonText,
           mcsText,
           rxPowerText,
         ]) => {
@@ -224,7 +251,8 @@ export function useSimData(): UseSimDataReturn {
             rxPowerText,
           })
           const buildings = buildingsText ? parseBuildings(buildingsText) : []
-          const sceneBounds = computeBounds(frames, buildings)
+          const jammers = jammersJsonText ? parseJammers(jammersJsonText) : []
+          const sceneBounds = computeBounds(frames, buildings, jammers)
           framesLenRef.current = frames.length
           frameIndexRef.current = 0
           frameAlphaRef.current = 0
@@ -233,8 +261,10 @@ export function useSimData(): UseSimDataReturn {
             frameIndex: 0,
             playing: false,
             speed: speedRef.current,
+            compact: compactRef.current,
             meta,
             buildings,
+            jammers,
             sceneBounds,
           })
         }
@@ -253,8 +283,10 @@ export function useSimData(): UseSimDataReturn {
       frameIndex: 0,
       playing: false,
       speed: speedRef.current,
+      compact: compactRef.current,
       meta: null,
       buildings: [],
+      jammers: [],
       sceneBounds: DEFAULT_BOUNDS,
     })
   }, [stopInterval])
@@ -292,6 +324,11 @@ export function useSimData(): UseSimDataReturn {
     })
   }, [])
 
+  const setCompact = useCallback((compact: boolean) => {
+    compactRef.current = compact
+    setState((prev) => ({ ...prev, compact }))
+  }, [])
+
   return {
     ...state,
     currentFrame: state.frames[state.frameIndex] ?? null,
@@ -304,5 +341,6 @@ export function useSimData(): UseSimDataReturn {
     pause,
     seek,
     setSpeed,
+    setCompact,
   }
 }

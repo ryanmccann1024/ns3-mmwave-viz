@@ -1,7 +1,8 @@
 import { Canvas } from '@react-three/fiber'
-import type { SimFrame, BuildingState, SimMeta } from '../../types'
+import type { SimFrame, BuildingState, SimMeta, JammerState } from '../../types'
 import type { SceneBounds } from '../../hooks/useSimData'
 import { Scene } from './Scene'
+import type { Trail } from './TrajectoryLayer'
 import { getScenarioTheme } from '../../styles/scenarioThemes'
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
   /** Shared mutable ref — updated every RAF tick, read inside useFrame */
   frameAlphaRef: React.MutableRefObject<number>
   buildings: BuildingState[]
+  jammers: JammerState[]
   sceneBounds: SceneBounds
   meta: SimMeta | null
   compact?: boolean
@@ -19,6 +21,7 @@ interface Props {
   onSelectNode: (id: number | null) => void
   onSelectLink: (key: string | null) => void
   dimensions?: 1 | 2 | 3
+  trails?: Trail[]
 }
 
 export function NetworkCanvas({
@@ -26,6 +29,7 @@ export function NetworkCanvas({
   nextFrame,
   frameAlphaRef,
   buildings,
+  jammers,
   sceneBounds,
   meta,
   compact = false,
@@ -35,6 +39,7 @@ export function NetworkCanvas({
   onSelectNode,
   onSelectLink,
   dimensions = 3,
+  trails,
 }: Props) {
   const scenario = meta?.scenario ?? ''
   const theme = getScenarioTheme(scenario)
@@ -53,6 +58,8 @@ export function NetworkCanvas({
         nextFrame={nextFrame}
         alphaRef={frameAlphaRef}
         buildings={buildings}
+        jammers={jammers}
+        carrierHz={meta?.frequency ?? 0}
         sceneBounds={sceneBounds}
         compact={compact}
         selectedNode={selectedNode}
@@ -63,6 +70,7 @@ export function NetworkCanvas({
         dimensions={dimensions}
         rainRate={meta?.rainRate ?? 0}
         scenario={scenario}
+        trails={trails}
       />
     </Canvas>
   )
