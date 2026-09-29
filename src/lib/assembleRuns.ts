@@ -14,6 +14,7 @@ export interface RunEntry {
   flowsFile?: File
   routesFile?: File
   nodesJsonFile?: File
+  jammersJsonFile?: File
   mcsFile?: File
   rxPowerFile?: File
 }
@@ -30,6 +31,7 @@ const SEED_LEVEL_FILES = new Set([
   'flows.csv',
   'routes.csv',
   'nodes.json',
+  'jammers.json',
   'mcs.csv',
   'rx-power.csv',
 ])
@@ -43,6 +45,22 @@ function isKnownFile(fname: string): boolean {
 
 function isBuildingsFile(fname: string): boolean {
   return fname.startsWith('buildings') && fname.endsWith('.json')
+}
+
+const EPISODE_DIR = /^episode-\d+$/
+
+/**
+ * Legacy runs are <a>/<b>/<c>[/<point or batch>]/(seed-N|inputs)/file.
+ * Experiment episodes (…/episode-NNNN/…) are excluded: their identity is the full
+ * path, so they are neither grouped nor downloaded here.
+ */
+export function isLegacyRunPath(path: string): boolean {
+  const parts = path.split('/')
+  const parentIdx = parts.length - 2
+  if (parentIdx < 3) return false
+  const parent = parts[parentIdx]
+  if (!parent.startsWith('seed-') && parent !== 'inputs' && parent !== 'input') return false
+  return !parts.some((p) => EPISODE_DIR.test(p))
 }
 
 export function assembleRuns(pairs: FilePair[]): RunEntry[] {
@@ -59,14 +77,17 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
     flows?: File
     routes?: File
     nodesJson?: File
+    jammersJson?: File
     mcs?: File
     rxPower?: File
   }
   const byKey = new Map<string, Partial>()
   const sharedBuildings = new Map<string, File>()
   const sharedNodesJson = new Map<string, File>()
+  const sharedJammersJson = new Map<string, File>()
 
   for (const { path, file } of pairs) {
+    if (!isLegacyRunPath(path)) continue
     const parts = path.split('/')
     const fname = parts[parts.length - 1]
 
@@ -103,6 +124,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         if (fname === 'flows.csv') entry.flows = file
         if (fname === 'routes.csv') entry.routes = file
         if (fname === 'nodes.json') entry.nodesJson = file
+        if (fname === 'jammers.json') entry.jammersJson = file
         if (fname === 'mcs.csv') entry.mcs = file
         if (fname === 'rx-power.csv') entry.rxPower = file
       }
@@ -111,7 +133,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
     // Also check for buildings*.json / nodes.json inside inputs/ subfolder:
     // Timestamp level: YYYY-MM/DD/HH-MM-SS/inputs/buildings*.json
     // Point level:     YYYY-MM/DD/HH-MM-SS/point-NNN/inputs/buildings*.json
-    if (isBuildingsFile(fname) || fname === 'nodes.json') {
+    if (isBuildingsFile(fname) || fname === 'nodes.json' || fname === 'jammers.json') {
       const parentDir = parts[parts.length - 2]
       if (parentDir === 'inputs' || parentDir === 'input') {
         // Check if this is point-level or timestamp-level
@@ -151,6 +173,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
             if (matches) {
               if (isBuildingsFile(fname) && !entry.buildings) entry.buildings = file
               if (fname === 'nodes.json' && !entry.nodesJson) entry.nodesJson = file
+              if (fname === 'jammers.json' && !entry.jammersJson) entry.jammersJson = file
             }
           }
           // Stash for runs discovered later in the loop
@@ -158,6 +181,8 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
             sharedBuildings.set(sharedKey, file)
           if (fname === 'nodes.json' && !sharedNodesJson.has(sharedKey))
             sharedNodesJson.set(sharedKey, file)
+          if (fname === 'jammers.json' && !sharedJammersJson.has(sharedKey))
+            sharedJammersJson.set(sharedKey, file)
         }
       }
     }
@@ -177,6 +202,11 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
       const shared = (ptKey ? sharedNodesJson.get(ptKey) : undefined) ?? sharedNodesJson.get(tsKey)
       if (shared) entry.nodesJson = shared
     }
+    if (!entry.jammersJson) {
+      const shared =
+        (ptKey ? sharedJammersJson.get(ptKey) : undefined) ?? sharedJammersJson.get(tsKey)
+      if (shared) entry.jammersJson = shared
+    }
   }
 
   const runs: RunEntry[] = []
@@ -195,6 +225,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         flowsFile: e.flows,
         routesFile: e.routes,
         nodesJsonFile: e.nodesJson,
+        jammersJsonFile: e.jammersJson,
         mcsFile: e.mcs,
         rxPowerFile: e.rxPower,
       })
@@ -209,7 +240,9 @@ export async function fetchRunsFromDevServer(): Promise<RunEntry[] | null> {
   try {
     const res = await fetch('/api/outputs')
     if (!res.ok) return null
-    const paths: string[] = await res.json()
+    const listed: string[] = await res.json()
+    // Only legacy runs are downloaded eagerly; experiment files load on demand
+    const paths = listed.filter((p) => isLegacyRunPath(p) && isKnownFile(p.split('/').pop()!))
     if (!paths.length) return null
 
     // Fetch all files in parallel, creating File objects
@@ -231,10 +264,12 @@ export async function fetchRunsFromDevServer(): Promise<RunEntry[] | null> {
 
 // Classic <input webkitdirectory> path
 export function parseRunsFromFileList(files: FileList): RunEntry[] {
-  const pairs: FilePair[] = Array.from(files).map((f) => ({
-    path: f.webkitRelativePath,
-    file: f,
-  }))
+  const pairs: FilePair[] = Array.from(files)
+    .filter((f) => !f.webkitRelativePath.split('/').some((p) => EPISODE_DIR.test(p)))
+    .map((f) => ({
+      path: f.webkitRelativePath,
+      file: f,
+    }))
   return assembleRuns(pairs)
 }
 
@@ -252,7 +287,7 @@ export async function walkDirectory(
         const file = await (entry as FileSystemFileHandle).getFile()
         pairs.push({ path, file })
       }
-    } else if (entry.kind === 'directory') {
+    } else if (entry.kind === 'directory' && !EPISODE_DIR.test(name) && !name.startsWith('.')) {
       pairs.push(...(await walkDirectory(entry as FileSystemDirectoryHandle, path)))
     }
   }

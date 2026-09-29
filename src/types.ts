@@ -77,6 +77,28 @@ export interface BuildingState {
   height: number
 }
 
+export interface JammerPoint {
+  x: number
+  y: number
+  z: number
+}
+
+export interface JammerState {
+  id: string
+  enabled: boolean
+  type: string
+  position: JammerPoint
+  velocity: { vx: number; vy: number; vz: number }
+  waypoints: (JammerPoint & { t: number })[]
+  intervals: { start: number; end: number }[]
+  targetFreqMhz: number[]
+  txPowerDbm: number
+  dutyCycle: number
+  maxRangeM: number
+  beamwidthDeg: number
+  azimuthDeg: number
+}
+
 export interface SimFrame {
   time: number
   nodes: NodeState[]
