@@ -22,6 +22,8 @@ Two CSVs (`positions.csv`, `links.csv`) + optional `buildings.json`, organized a
 
 CSV header comments (`#key=value`) encode simulation metadata (scenario, frequency, txPower, etc.).
 
+Standalone baseline runs live at `outputs/YYYY-MM/DD/HH-MM-SS-baseline[-N]/baseline_manifest.json` (+ `effective-inputs/baseline-plan.json`); manifest-only runs list as non-playable.
+
 ## Architecture
 
 - `hooks/` — React hooks (`useSimData` for playback state + parsing, `useSimLog` for event log)

@@ -67,6 +67,8 @@ export const TRAIL_COLORS: Record<string, string> = {
   model: '#2563eb',
   hold: '#ea580c',
   random_valid: '#c026d3',
+  geometric: '#0d9488',
+  optimization: '#ca8a04',
 }
 export const TRAIL_COLOR_DEFAULT = '#475569'
 export const trailColor = (policy: string) => TRAIL_COLORS[policy] ?? TRAIL_COLOR_DEFAULT

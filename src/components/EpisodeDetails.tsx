@@ -70,11 +70,25 @@ function useSmallJson(catalog: ResultCatalog, path: string | null): Loaded<unkno
 }
 
 function Identity({ episode, evaluation }: { episode: Episode; evaluation: Evaluation }) {
+  // A placement baseline was not trained; the seed only identifies the evaluation group
+  const baseline = evaluation.baselines[episode.policy] ?? null
   return (
     <div>
       <Row label="Row" value={episode.label} />
-      <Row label="Model training seed" value={episode.trainingSeed ?? 'none (baselines only)'} />
+      {baseline ? (
+        <Row label="Evaluation group training seed" value={episode.trainingSeed ?? 'none'} />
+      ) : (
+        <Row label="Model training seed" value={episode.trainingSeed ?? 'none (baselines only)'} />
+      )}
       <Row label="Replayed policy" value={policyLabel(episode.policy)} />
+      {baseline && (
+        <div className="text-[11px] text-muted py-1.5">
+          Placement policy: nodes were placed by the{' '}
+          {policyLabel(baseline.method ?? episode.policy)} planner before the episode; recorded
+          decisions/rewards are HoldPolicy-on-prepared-layout observations, not the planner&apos;s
+          decision trace.
+        </div>
+      )}
       <Row label="Evaluation seed" value={episode.seed} />
       <Row label="Status" value={episode.status ?? 'not recorded'} />
       <Row label="Exit code" value={formatNumber(episode.exitCode)} />

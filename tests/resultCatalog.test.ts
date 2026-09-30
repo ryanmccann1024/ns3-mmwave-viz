@@ -4,6 +4,7 @@ import {
   catalogFromDevServer,
   catalogFromDirectoryHandle,
   catalogFromFileList,
+  isCatalogFile,
   isReaderFileName,
   isTrainRolloutDirectory,
   normalizeRelPath,
@@ -119,4 +120,19 @@ test('dev catalog fetches bytes only in getFile', async (t) => {
     '/api/outputs',
     '/outputs/exp/eval/row%20a/train-seed-101/model/episode-0000/seed-301/links.csv',
   ])
+})
+
+test('baseline manifests and plans are catalog files; logs are not', () => {
+  assert.equal(isCatalogFile(['baseline_manifest.json']), true)
+  assert.equal(isCatalogFile(['effective-inputs', 'baseline-plan.json']), true)
+  assert.equal(
+    isCatalogFile('2026-09/30/12-00-00-baseline/baseline_manifest.json'.split('/')),
+    true
+  )
+  assert.equal(isCatalogFile(['planner.log']), false)
+  assert.equal(isCatalogFile(['sim.log']), false)
+  assert.equal(isCatalogFile(['source-inputs', 'run.ini']), false)
+  // summary.json behavior is unchanged
+  assert.equal(isCatalogFile(['seed-1', 'summary.json']), true)
+  for (const bad of ['../x', '/abs', 'a\\b']) assert.equal(normalizeRelPath(bad), null, bad)
 })

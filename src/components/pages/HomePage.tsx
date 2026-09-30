@@ -5,7 +5,8 @@ import { Button } from '../ui/Button'
 import { BrandMark } from '../ui/BrandMark'
 import { Panel } from '../ui/Panel'
 import type { Section } from '../shell/NavRail'
-import { ExperimentRow, ScenarioRow, groupRuns, groupScenarios } from './shared'
+import { truncateText } from './BaselineInfo'
+import { ExperimentRow, ScenarioRow, groupRuns, groupScenarios, unplayableForBatch } from './shared'
 
 interface Props {
   workspace: Workspace
@@ -29,7 +30,15 @@ function Tile({ value, label, onClick }: { value: number; label: string; onClick
 }
 
 export function HomePage({ workspace, onNavigate, onOpenRun, onOpenExperiment }: Props) {
-  const { dirName, runs, experimentRoots, catalog, loadingDir } = workspace
+  const {
+    dirName,
+    runs,
+    experimentRoots,
+    catalog,
+    loadingDir,
+    unplayableBaselines,
+    baselineDiscoveryError,
+  } = workspace
 
   if (!dirName) {
     return (
@@ -57,8 +66,9 @@ export function HomePage({ workspace, onNavigate, onOpenRun, onOpenExperiment }:
     )
   }
 
-  const batches = groupRuns(runs)
-  const scenarios = groupScenarios(batches.flatMap(([, r]) => r))
+  const scenarios = groupRuns(runs, unplayableBaselines).flatMap(([batch, batchRuns]) =>
+    groupScenarios(batchRuns, unplayableForBatch(unplayableBaselines, batch))
+  )
   const latestScenarios = scenarios.slice(0, RECENT)
   const latestExperiments = [...experimentRoots].reverse().slice(0, RECENT)
 
@@ -103,6 +113,13 @@ export function HomePage({ workspace, onNavigate, onOpenRun, onOpenExperiment }:
         <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
           This folder exceeded the reader&apos;s file limit, so some experiments may be missing.
           Open one experiment or fetched-results folder directly.
+        </div>
+      )}
+
+      {baselineDiscoveryError && (
+        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          Baseline runs could not be listed: {truncateText(baselineDiscoveryError, 200)}. Simulation
+          runs are unaffected.
         </div>
       )}
 

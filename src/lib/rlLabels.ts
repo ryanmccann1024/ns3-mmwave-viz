@@ -1,4 +1,6 @@
 import type { Evaluation } from './experimentIndex'
+import type { BaselineStatus } from './baselineManifest.ts'
+import { sanitizeLabel } from './baselineManifest.ts'
 
 /** Labels for people, derived from the saved reward schema rather than a row-name guess. */
 export function rewardLabel(evaluation: Evaluation): string {
@@ -29,7 +31,38 @@ export function policyLabel(policy: string): string {
   if (policy === 'model') return 'Trained model'
   if (policy === 'hold') return 'Hold position'
   if (policy === 'random_valid') return 'Random valid moves'
+  if (policy === 'geometric') return 'Geometric'
+  if (policy === 'optimization') return 'Optimization'
   return policy.replace(/_/g, ' ')
+}
+
+const OBJECTIVE_LABELS: Record<string, string> = {
+  coverage: 'Coverage',
+  balanced: 'Balanced',
+  resilience: 'Resilience',
+}
+
+/** Baseline placement objective; unknown strings are shown raw (sanitized). */
+export function objectiveLabel(s: string | null): string {
+  if (s === null) return 'unknown'
+  if (Object.prototype.hasOwnProperty.call(OBJECTIVE_LABELS, s)) return OBJECTIVE_LABELS[s]
+  return sanitizeLabel(s) ?? 'unknown'
+}
+
+const BASELINE_STATUS_LABELS: Record<BaselineStatus, string> = {
+  preparing: 'Preparing',
+  prepared: 'Prepared',
+  running: 'Running',
+  complete: 'Complete',
+  failed: 'Failed',
+  interrupted: 'Interrupted',
+}
+
+export function baselineStatusLabel(s: BaselineStatus | 'unknown' | null): string {
+  if (s === null || s === 'unknown') return 'Unknown'
+  return Object.prototype.hasOwnProperty.call(BASELINE_STATUS_LABELS, s)
+    ? BASELINE_STATUS_LABELS[s]
+    : 'Unknown'
 }
 
 export function experimentLabel(name: string): string {

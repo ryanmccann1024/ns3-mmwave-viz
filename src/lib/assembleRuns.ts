@@ -1,3 +1,5 @@
+import type { BaselineRunMeta } from './baselineRuns.ts'
+
 // -------------------------------------------------------------------------
 // Types
 // -------------------------------------------------------------------------
@@ -8,6 +10,11 @@ export interface RunEntry {
   seed: string
   point?: string
   key: string
+  /**
+   * Full catalog-relative timestamp directory taken from the file path, e.g.
+   * '2026-09/30/12-00-00' or 'relocated/outputs/2026-09/30/12-00-00-baseline'.
+   */
+  runDir: string
   linksFile: File
   posFile: File
   buildingsFile?: File
@@ -17,6 +24,8 @@ export interface RunEntry {
   jammersJsonFile?: File
   mcsFile?: File
   rxPowerFile?: File
+  /** Standalone baseline manifest metadata, attached after discovery */
+  baseline?: BaselineRunMeta
 }
 
 export type FilePair = { path: string; file: File }
@@ -71,6 +80,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
     seed: string
     point?: string
     key: string
+    runDir: string
     links?: File
     pos?: File
     buildings?: File
@@ -111,12 +121,13 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         const d = parts[dayIdx]
         const t = parts[timeIdx]
         const point = hasPoint ? beforeSeed : undefined
-        const key = hasPoint
-          ? `${ym}/${d}/${t}/${beforeSeed}/${seedDir}`
-          : `${ym}/${d}/${t}/${seedDir}`
+        // Keyed on the full directory so nested copies with the same dated suffix stay
+        // distinct; a top-level run keeps its YYYY-MM/DD/time[/point]/seed-N key.
+        const runDir = parts.slice(0, timeIdx + 1).join('/')
+        const key = hasPoint ? `${runDir}/${beforeSeed}/${seedDir}` : `${runDir}/${seedDir}`
 
         if (!byKey.has(key))
-          byKey.set(key, { yearMonth: ym, day: d, time: t, seed: seedDir, point, key })
+          byKey.set(key, { yearMonth: ym, day: d, time: t, seed: seedDir, point, key, runDir })
         const entry = byKey.get(key)!
         if (fname === 'links.csv') entry.links = file
         if (fname === 'positions.csv') entry.pos = file
@@ -140,36 +151,26 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         const aboveInputs = parts[parts.length - 3]
         const isPointLevel = aboveInputs?.startsWith('point-')
 
-        let ymIdx: number, dIdx: number, tIdx: number
+        let dIdx: number, tIdx: number
         let pointDir: string | undefined
         if (isPointLevel) {
           pointDir = aboveInputs
           tIdx = parts.length - 4
           dIdx = parts.length - 5
-          ymIdx = parts.length - 6
         } else {
           tIdx = parts.length - 3
           dIdx = parts.length - 4
-          ymIdx = parts.length - 5
         }
 
         if (tIdx >= 0 && dIdx >= 0) {
-          const time = parts[tIdx]
-          const day = parts[dIdx]
-          const yearMonth = ymIdx >= 0 ? parts[ymIdx] : ''
+          const runDir = parts.slice(0, tIdx + 1).join('/')
 
-          // Build a shared key — include point if present
-          const sharedKey = pointDir
-            ? `${yearMonth}/${day}/${time}/${pointDir}`
-            : `${yearMonth}/${day}/${time}`
+          // Build a shared key from the full run directory — include point if present
+          const sharedKey = pointDir ? `${runDir}/${pointDir}` : runDir
 
           // Apply to matching seed runs already discovered
           for (const entry of byKey.values()) {
-            const matches =
-              entry.yearMonth === yearMonth &&
-              entry.day === day &&
-              entry.time === time &&
-              (!pointDir || entry.point === pointDir)
+            const matches = entry.runDir === runDir && (!pointDir || entry.point === pointDir)
             if (matches) {
               if (isBuildingsFile(fname) && !entry.buildings) entry.buildings = file
               if (fname === 'nodes.json' && !entry.nodesJson) entry.nodesJson = file
@@ -190,7 +191,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
 
   // Apply shared files to any runs that don't have them yet
   for (const entry of byKey.values()) {
-    const tsKey = `${entry.yearMonth}/${entry.day}/${entry.time}`
+    const tsKey = entry.runDir
     const ptKey = entry.point ? `${tsKey}/${entry.point}` : null
 
     if (!entry.buildings) {
@@ -219,6 +220,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         seed: e.seed,
         point: e.point,
         key: e.key,
+        runDir: e.runDir,
         linksFile: e.links!,
         posFile: e.pos!,
         buildingsFile: e.buildings,
@@ -262,14 +264,22 @@ export async function fetchRunsFromDevServer(): Promise<RunEntry[] | null> {
   }
 }
 
+/**
+ * webkitRelativePath starts with the picked folder's own name; drop it so run paths
+ * share the catalog's root-relative coordinates (as catalogFromFileList does).
+ */
+function pickedRelativePath(f: File): string {
+  const rel = f.webkitRelativePath
+  if (!rel) return f.name
+  const slash = rel.indexOf('/')
+  return slash < 0 ? rel : rel.slice(slash + 1)
+}
+
 // Classic <input webkitdirectory> path
-export function parseRunsFromFileList(files: FileList): RunEntry[] {
+export function parseRunsFromFileList(files: FileList | File[]): RunEntry[] {
   const pairs: FilePair[] = Array.from(files)
-    .filter((f) => !f.webkitRelativePath.split('/').some((p) => EPISODE_DIR.test(p)))
-    .map((f) => ({
-      path: f.webkitRelativePath,
-      file: f,
-    }))
+    .map((f) => ({ path: pickedRelativePath(f), file: f }))
+    .filter(({ path }) => !path.split('/').some((p) => EPISODE_DIR.test(p)))
   return assembleRuns(pairs)
 }
 

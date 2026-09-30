@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ResultCatalog } from '../../lib/resultCatalog'
 import type {
+  EvalBaselineInfo,
   Episode,
   Evaluation,
   Experiment,
@@ -27,6 +28,12 @@ import { ExperimentStatus, Note, StateBadge } from '../ExperimentStatus'
 import { Tag } from './shared'
 import { experimentLabel, policyLabel, rewardLabel } from '../../lib/rlLabels'
 import { ReplayPicker } from '../rl/ReplayPicker'
+import {
+  BaselineBadges,
+  BaselineProvenance,
+  BaselineSetupLine,
+  sourceMismatchKeys,
+} from './BaselineInfo'
 
 interface Props {
   catalog: ResultCatalog
@@ -71,6 +78,25 @@ const humanize = (key: string) =>
 const mean = (values: (number | null | undefined)[]) => {
   const xs = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null
+}
+
+/** Method/objective/status of a placement-baseline policy, plus its measured setup numbers */
+function BaselineSummary({ info }: { info: EvalBaselineInfo }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <BaselineBadges
+        compact
+        method={info.method}
+        objective={info.objective}
+        status={info.manifest?.status ?? null}
+        manifestError={info.manifest ? null : info.manifestError}
+      />
+      <BaselineSetupLine
+        initialDisplacementMTotal={info.initialDisplacementMTotal}
+        plannerWallS={info.plannerWallS}
+      />
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +167,11 @@ function Leaderboard({ evaluation }: { evaluation: Evaluation }) {
                   />
                   {policyLabel(row.policy)}
                 </div>
+                {evaluation.baselines[row.policy] && (
+                  <div className="mt-1.5">
+                    <BaselineSummary info={evaluation.baselines[row.policy]} />
+                  </div>
+                )}
                 <div className="text-xl font-semibold tabular-nums text-ink mt-2">
                   {row.metricMeans.delivery_ratio === null ||
                   row.metricMeans.delivery_ratio === undefined
@@ -502,6 +533,10 @@ function EvaluationDetails({
     ['Model', evaluation.modelSelection ?? 'not recorded'],
   ]
   if (evaluation.fetchTaskState) entries.push(['Fetch snapshot', evaluation.fetchTaskState])
+  // Placement-baseline policies, in the evaluation's policy order
+  const baselineEntries = evaluation.policies
+    .filter((policy) => evaluation.baselines[policy])
+    .map((policy) => [policy, evaluation.baselines[policy]] as const)
 
   return (
     <Panel title={evalTitle(evaluation)} actions={<StateBadge state={evaluation.state} />}>
@@ -520,6 +555,34 @@ function EvaluationDetails({
           </Note>
         )}
         {evaluation.compatibilityNote && <Note>{evaluation.compatibilityNote}</Note>}
+        {baselineEntries.map(([policy, info]) => {
+          const mismatched = sourceMismatchKeys(info.sourceIdentityCheck)
+          return (
+            mismatched.length > 0 && (
+              <Note key={policy} tone="warn">
+                {policyLabel(policy)}: source scenario differs from the baseline&apos;s recorded
+                source: {mismatched.join(', ')}.
+              </Note>
+            )
+          )
+        })}
+        {baselineEntries.length > 0 && (
+          <div>
+            {baselineEntries.map(([policy, info]) => (
+              <div key={policy}>
+                <div className="text-sm font-medium text-ink mt-2">{policyLabel(policy)}</div>
+                <BaselineSummary info={info} />
+                <BaselineProvenance
+                  title={`Baseline provenance · ${policyLabel(policy)}`}
+                  manifest={info.manifest}
+                  evalInfo={info}
+                  sourceIdentityCheck={info.sourceIdentityCheck}
+                  manifestError={info.manifestError}
+                />
+              </div>
+            ))}
+          </div>
+        )}
         <div
           onClick={() => {
             if (requested) return

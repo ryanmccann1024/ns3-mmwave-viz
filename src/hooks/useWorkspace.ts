@@ -21,6 +21,22 @@ import {
 import type { ExperimentRoot } from '../lib/experimentIndex'
 import { discoverExperiments } from '../lib/experimentIndex'
 import { discoverTrainingRuns } from '../lib/trainingRun'
+import type { BaselineRun } from '../lib/baselineRuns'
+import { attachBaselineMeta, discoverBaselineRuns } from '../lib/baselineRuns'
+
+const BASELINE_DISCOVERY_ERROR = 'Baseline run manifests could not be listed'
+
+type BaselineDiscovery = { baselines: BaselineRun[]; error: string | null }
+
+async function discoverBaselines(catalog: ResultCatalog | null): Promise<BaselineDiscovery> {
+  if (!catalog) return { baselines: [], error: null }
+  try {
+    return { baselines: await discoverBaselineRuns(catalog), error: null }
+  } catch (err) {
+    console.warn('Baseline discovery failed:', err)
+    return { baselines: [], error: BASELINE_DISCOVERY_ERROR }
+  }
+}
 
 /**
  * The open outputs folder: legacy simulation runs plus the RL experiment roots found in it.
@@ -35,6 +51,11 @@ export function useWorkspace() {
   const [experimentRoots, setExperimentRoots] = useState<ExperimentRoot[]>([])
   const [trainingRoots, setTrainingRoots] = useState<string[]>([])
   const [allTrainingRoots, setAllTrainingRoots] = useState<string[]>([])
+  const [baselineRuns, setBaselineRuns] = useState<BaselineRun[]>([])
+  const [unplayableBaselines, setUnplayableBaselines] = useState<BaselineRun[]>([])
+  const [baselineDiscoveryError, setBaselineDiscoveryError] = useState<string | null>(null)
+  // Bumped on every source change; async results from an older source are dropped
+  const sourceToken = useRef(0)
 
   // Experiment folders are indexed from path names only; no file is read here
   const applyCatalog = useCallback((next: ResultCatalog | null) => {
@@ -57,53 +78,90 @@ export function useWorkspace() {
     setRuns(found)
   }, [])
 
+  /**
+   * Starts a new source: older async results (and their loading flag) are ignored and
+   * baseline state is cleared
+   */
+  const beginSource = useCallback(() => {
+    sourceToken.current += 1
+    setLoadingDir(false)
+    setBaselineRuns([])
+    setUnplayableBaselines([])
+    setBaselineDiscoveryError(null)
+    return sourceToken.current
+  }, [])
+
+  /** Attaches discovered baselines to the playable runs; nonfatal on failure */
+  const applyBaselines = useCallback((found: RunEntry[], discovery: BaselineDiscovery) => {
+    const attached = attachBaselineMeta(found, discovery.baselines)
+    setRuns(attached.runs)
+    setBaselineRuns(discovery.baselines)
+    setUnplayableBaselines(attached.unplayable)
+    setBaselineDiscoveryError(discovery.error)
+  }, [])
+
   const openWithFSA = useCallback(
     async (handle: FileSystemDirectoryHandle) => {
+      const token = beginSource()
       setLoadingDir(true)
       try {
         const pairs = await walkDirectory(handle)
-        applyRuns(handle.name, assembleRuns(pairs))
-        applyCatalog(await catalogFromDirectoryHandle(handle).catch(() => null))
+        const found = assembleRuns(pairs)
+        const next = await catalogFromDirectoryHandle(handle).catch(() => null)
+        const discovery = await discoverBaselines(next)
+        if (token !== sourceToken.current) return
+        applyRuns(handle.name, found)
+        applyCatalog(next)
+        applyBaselines(found, discovery)
         await saveDirectoryHandle(handle)
       } finally {
-        setLoadingDir(false)
+        if (token === sourceToken.current) setLoadingDir(false)
       }
     },
-    [applyRuns, applyCatalog]
+    [applyRuns, applyCatalog, applyBaselines, beginSource]
   )
 
   // On mount: try dev-server auto-discovery first, then the cached FSA handle
   useEffect(() => {
     let cancelled = false
+    const token = beginSource()
+    const stale = () => cancelled || token !== sourceToken.current
     ;(async () => {
       setLoadingDir(true)
       try {
         const devRuns = await fetchRunsFromDevServer()
         const devCatalog = await catalogFromDevServer()
-        if (cancelled) return
+        const discovery = await discoverBaselines(devCatalog)
+        if (stale()) return
         const devRoots = devCatalog ? discoverExperiments(devCatalog) : []
-        if ((devRuns && devRuns.length > 0) || devRoots.length > 0) {
+        // A folder holding only baseline manifests (e.g. failed runs) is still a result
+        if (
+          (devRuns && devRuns.length > 0) ||
+          devRoots.length > 0 ||
+          discovery.baselines.length > 0
+        ) {
           applyRuns('outputs', devRuns ?? [])
           applyCatalog(devCatalog)
+          applyBaselines(devRuns ?? [], discovery)
           return
         }
         if (!hasFSA()) return
         const handle = await loadDirectoryHandle()
-        if (cancelled || !handle) return
+        if (stale() || !handle) return
         try {
           const perm = await handle.requestPermission({ mode: 'read' })
-          if (perm === 'granted' && !cancelled) await openWithFSA(handle)
+          if (perm === 'granted' && !stale()) await openWithFSA(handle)
         } catch {
           await clearDirectoryHandle()
         }
       } finally {
-        if (!cancelled) setLoadingDir(false)
+        if (!stale()) setLoadingDir(false)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [openWithFSA, applyRuns, applyCatalog])
+  }, [openWithFSA, applyRuns, applyCatalog, applyBaselines, beginSource])
 
   const openFolder = useCallback(async () => {
     if (!hasFSA()) {
@@ -126,18 +184,26 @@ export function useWorkspace() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files
       if (!files || files.length === 0) return
-      applyRuns(files[0].webkitRelativePath.split('/')[0], parseRunsFromFileList(files))
-      applyCatalog(catalogFromFileList(files))
+      const token = beginSource()
+      const found = parseRunsFromFileList(files)
+      const next = catalogFromFileList(files)
+      // Runs are usable at once; baseline metadata follows when its manifests are read
+      applyRuns(files[0].webkitRelativePath.split('/')[0], found)
+      applyCatalog(next)
+      void discoverBaselines(next).then((discovery) => {
+        if (token === sourceToken.current) applyBaselines(found, discovery)
+      })
     },
-    [applyRuns, applyCatalog]
+    [applyRuns, applyCatalog, applyBaselines, beginSource]
   )
 
   const forgetFolder = useCallback(async () => {
+    beginSource()
     await clearDirectoryHandle()
     setDirName(null)
     setRuns([])
     applyCatalog(null)
-  }, [applyCatalog])
+  }, [applyCatalog, beginSource])
 
   return {
     dirInputRef,
@@ -146,6 +212,9 @@ export function useWorkspace() {
     runs,
     catalog,
     experimentRoots,
+    baselineRuns,
+    unplayableBaselines,
+    baselineDiscoveryError,
     trainingRoots,
     allTrainingRoots,
     loadingDir,

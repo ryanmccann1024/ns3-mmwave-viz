@@ -31,6 +31,8 @@ const READER_FILE_NAMES = new Set([
   'rl_episode.json',
   'steps.jsonl',
   'evaluations.npz',
+  'baseline_manifest.json',
+  'baseline-plan.json',
 ])
 
 export function isReaderFileName(name: string): boolean {
