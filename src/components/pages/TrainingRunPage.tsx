@@ -9,6 +9,7 @@ import { Button } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
 import { TrainingInsights } from '../rl/TrainingInsights'
 import { Note } from '../ExperimentStatus'
+import { Skeleton } from '../ui/Skeleton'
 
 interface Props {
   catalog: ResultCatalog
@@ -203,7 +204,10 @@ export function TrainingRunPage({
       />
       {openError && <Note tone="error">{openError}</Note>}
       {(!loaded || loaded.state === 'loading') && (
-        <div className="text-sm text-muted">Reading training run…</div>
+        <div role="status" aria-busy="true" aria-label="Reading training run">
+          <span className="sr-only">Reading training run…</span>
+          <Skeleton lines={3} />
+        </div>
       )}
       {loaded?.state === 'error' && <Note tone="error">{loaded.message}</Note>}
       {run && (

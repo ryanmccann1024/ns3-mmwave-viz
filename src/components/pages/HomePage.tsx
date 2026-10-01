@@ -7,6 +7,7 @@ import { Panel } from '../ui/Panel'
 import type { Section } from '../shell/NavRail'
 import { truncateText } from './BaselineInfo'
 import { ExperimentRow, ScenarioRow, groupRuns, groupScenarios, unplayableForBatch } from './shared'
+import { MOTION } from '../../styles/motion'
 
 interface Props {
   workspace: Workspace
@@ -20,8 +21,9 @@ const RECENT = 5
 function Tile({ value, label, onClick }: { value: number; label: string; onClick?: () => void }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="tile px-4 py-3 text-left min-w-[8.5rem] hover:bg-white/80 transition-colors"
+      className={`tile px-4 py-3 text-left min-w-[8.5rem] hover:bg-white/80 ${MOTION.surface}`}
     >
       <div className="text-2xl font-semibold tabular-nums tracking-tight text-ink">{value}</div>
       <div className="text-sm text-muted">{label}</div>

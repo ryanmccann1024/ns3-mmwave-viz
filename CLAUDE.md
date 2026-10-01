@@ -31,9 +31,11 @@ Standalone baseline runs live at `outputs/YYYY-MM/DD/HH-MM-SS-baseline[-N]/basel
 - `components/ui/` — Reusable UI primitives (Button, Badge, Row, StatItem, Terminal)
 - `components/canvas/` — Three.js scene components (Scene, NodeObject, LinkObject, BuildingObject, SceneEnvironment)
 - `styles/tokens.ts` — Single source of truth for colors, sizes, labels, Tailwind class mappings
+- `components/decisions/` + `lib/decisionExplorer.ts`/`nodeIdentity.ts`/`frameSeek.ts` — Decisions tab: integer-keyed `steps.jsonl` index, exact n−1 input join, derived applied action, checked ordinal node↔CSV mapping, interval-checked frame seek
 
 ## Key Patterns
 
 - **Performance**: R3F canvas uses imperative `useFrame` updates, not React state, for 60fps. `frameAlphaRef` is a mutable ref updated via RAF, shared between React and Three.js — never put animation state in React state.
 - **Coordinates**: Three.js is Y-up; `coordinates.ts` maps sim coords (Z=altitude) to Three.js (Y=altitude). All coordinate functions accept a `dim` param (1/2/3) for multi-view support.
+- **Motion**: shared timing/easing tokens in `tailwind.config.js` and class strings in `styles/motion.ts` (`MOTION.colors/surface/fade/lift/enter/enterFade`); `transition-all` is banned (`tests/motionPolicy.test.ts`); `prefers-reduced-motion` and `:focus-visible` live in `index.css`.
 - **Styling**: Tailwind utility classes everywhere. Design tokens in `styles/tokens.ts`. Use the `Button` component (variants: primary, ghost, icon-round, link) for interactive buttons.

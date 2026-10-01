@@ -4,10 +4,13 @@ export const SUPPORTED_TELEMETRY_VERSION = 1
 
 export interface TelemetryContract {
   node_ids: string[]
-  slot_node_ids: string[]
+  /** a slot may be null-padded when fewer nodes are controlled than slots exist */
+  slot_node_ids: (string | null)[]
   action_meanings: string[]
   tick_s?: number
   decision_interval_s?: number
+  /** declared count of action decisions; records then run 0..num_decisions */
+  num_decisions?: number
   [key: string]: unknown
 }
 
@@ -40,6 +43,8 @@ export interface StepRecord {
   legacy_reward?: number | null
   revalidated_slots: number[]
   facts?: unknown
+  /** hash of the pre-action observation this record carries; absent in older telemetry */
+  obs_sha256?: string
 }
 
 export type ParseStepsResult =
@@ -92,6 +97,26 @@ export function parseSteps(text: string): ParseStepsResult {
 }
 
 const TIME_EPSILON = 1e-9
+
+/**
+ * The record whose integer `decision` equals n, by exact binary search over the
+ * saved order (the producer writes decisions ascending). Never the nearest row:
+ * a sampled-out decision is null.
+ */
+export function recordForDecision(parsed: { steps: StepRecord[] }, n: number): StepRecord | null {
+  if (!Number.isInteger(n)) return null
+  const steps = parsed.steps
+  let lo = 0
+  let hi = steps.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const d = steps[mid].decision
+    if (d === n) return steps[mid]
+    if (d < n) lo = mid + 1
+    else hi = mid - 1
+  }
+  return null
+}
 
 export function decisionWindow(
   step: StepRecord,

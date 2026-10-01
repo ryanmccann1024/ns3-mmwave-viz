@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { MOTION } from '../../styles/motion'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'icon-round' | 'link'
 
@@ -10,18 +11,19 @@ interface Props {
   title?: string
   children: ReactNode
   className?: string
+  'aria-label'?: string
+  'aria-pressed'?: boolean
 }
 
+// Raised variants settle by one pixel on press; colour and lift share the fast duration
+const PRESS = `active:translate-y-px ${MOTION.lift}`
+
 const BASE: Record<Variant, string> = {
-  primary:
-    'px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-ink text-white text-sm font-semibold shadow-control transition-colors',
-  secondary:
-    'px-3.5 py-2 rounded-xl text-sm font-medium transition-colors bg-white text-ink border border-hairline shadow-control hover:bg-white/60',
-  ghost:
-    'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-white/70 text-ink-2 hover:bg-white hover:text-ink border border-hairline shadow-control',
-  'icon-round':
-    'w-10 h-10 flex items-center justify-center rounded-full bg-accent hover:bg-accent-ink transition-colors text-white flex-shrink-0 shadow-control',
-  link: 'text-xs text-muted hover:text-ink transition-colors',
+  primary: `px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-ink text-white text-sm font-semibold shadow-control ${MOTION.colors} ${PRESS}`,
+  secondary: `px-3.5 py-2 rounded-xl text-sm font-medium ${MOTION.colors} ${PRESS} bg-white text-ink border border-hairline shadow-control hover:bg-white/60`,
+  ghost: `px-2.5 py-1 rounded-lg text-xs font-medium ${MOTION.colors} ${PRESS} bg-white/70 text-ink-2 hover:bg-white hover:text-ink border border-hairline shadow-control`,
+  'icon-round': `w-10 h-10 flex items-center justify-center rounded-full bg-accent hover:bg-accent-ink ${MOTION.colors} text-white flex-shrink-0 shadow-control`,
+  link: `text-xs text-muted hover:text-ink ${MOTION.colors}`,
 }
 
 const ACTIVE: Record<Variant, string> = {
@@ -40,14 +42,19 @@ export function Button({
   title,
   children,
   className,
+  'aria-label': ariaLabel,
+  'aria-pressed': ariaPressed,
 }: Props) {
   const base = BASE[variant]
   const activeClass = active ? ACTIVE[variant] : ''
   return (
     <button
+      type="button"
       onClick={onClick}
       title={title}
       disabled={disabled}
+      aria-label={ariaLabel}
+      aria-pressed={ariaPressed}
       className={`${base} ${activeClass} ${className ?? ''} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       {children}

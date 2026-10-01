@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Episode, Evaluation } from '../../lib/experimentIndex'
 import { policyLabel, rewardLabel } from '../../lib/rlLabels'
 import { Button } from '../ui/Button'
+import { MOTION } from '../../styles/motion'
 
 interface Props {
   evaluations: Evaluation[]
@@ -13,7 +14,7 @@ interface Props {
 }
 
 const SELECT =
-  'w-full rounded-xl border border-hairline bg-white/85 px-3 py-2 text-base text-ink focus:outline-none focus:border-accent'
+  'w-full rounded-xl border border-hairline bg-white/85 px-3 py-2 text-base text-ink focus-visible:border-accent'
 
 /** Pick one actual saved replay; variant, policy and test seed are separate choices. */
 export function ReplayPicker({
@@ -77,11 +78,11 @@ export function ReplayPicker({
       )}
       {expanded && (
         <div
-          className={
+          className={`${MOTION.enter} ${
             compact
               ? 'grid grid-cols-2 gap-3 items-end'
               : 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,.8fr)_auto] gap-3 items-end'
-          }
+          }`}
         >
           <label
             className={`flex flex-col gap-1.5 text-sm font-medium text-ink-2 ${compact ? 'col-span-2' : ''}`}

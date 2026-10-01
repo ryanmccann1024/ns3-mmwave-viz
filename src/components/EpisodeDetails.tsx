@@ -1,20 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ResultCatalog } from '../lib/resultCatalog'
-import { readJson, readText } from '../lib/resultCatalog'
+import { readJson } from '../lib/resultCatalog'
 import type { Episode, Evaluation } from '../lib/experimentIndex'
 import { formatNumber } from '../lib/comparisonView'
-import type { ParseStepsResult, StepRecord, TelemetryContract } from '../lib/episodeTelemetry'
-import {
-  decisionAt,
-  decisionWindow,
-  maskBySlot,
-  parseSteps,
-  rewardComponents,
-  slotActions,
-} from '../lib/episodeTelemetry'
+import type { TelemetryContract } from '../lib/episodeTelemetry'
+import { rewardComponents } from '../lib/episodeTelemetry'
+import type { DecisionIndex, DecisionJoin, EpisodeTelemetry } from '../lib/decisionExplorer'
+import { decisionAtTime, isUnavailable, joinDecision } from '../lib/decisionExplorer'
+import type { TelemetryState } from '../hooks/useEpisodeTelemetry'
 import { controlledNodeIndices } from '../lib/trajectory'
 import { trailColor } from '../styles/tokens'
+import { MOTION } from '../styles/motion'
 import { shortNumber } from '../lib/format'
 import { policyLabel } from '../lib/rlLabels'
 import type { OverlayOption } from '../hooks/useExperimentSession'
@@ -193,16 +190,14 @@ function SummaryView({ data }: { data: Loaded<unknown> | null }) {
 
 function DecisionView({
   contract,
-  step,
+  join,
   currentTime,
-  tickS,
 }: {
   contract: TelemetryContract
-  step: StepRecord | null
+  join: DecisionJoin | null
   currentTime: number
-  tickS: number | undefined
 }) {
-  if (!step) {
+  if (!join) {
     return (
       <div className="text-xs text-muted">
         No saved decision covers t={currentTime.toFixed(3)}s. Telemetry may be saved only every few
@@ -210,73 +205,102 @@ function DecisionView({
       </div>
     )
   }
-  const actions = slotActions(contract, step)
-  const masks = maskBySlot(contract, step)
-  const window = decisionWindow(step, tickS)
+  const { record, action, input, outcome } = join
+  const meanings = contract.action_meanings
+  const slotLabel = (slot: number) =>
+    `Slot ${slot} · ${contract.slot_node_ids[slot] ?? 'empty slot'}`
+  const actionName = (index: number) => meanings[index] ?? 'unknown action'
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <Row label="Decision" value={formatNumber(step.decision)} />
-        <Row label="Decision time" value={`${formatNumber(step.time_s)} s`} />
-        <Row label="Tick" value={formatNumber(step.tick)} />
-        {window && (
+        <Row label="Decision" value={formatNumber(record.decision)} />
+        <Row label="Decision time" value={`${formatNumber(record.time_s)} s`} />
+        <Row label="Tick" value={formatNumber(record.tick)} />
+        {outcome && outcome.intervalStartS !== null && (
           <Row
             label="Action applied and reward earned over"
-            value={`(${formatNumber(window.start)}, ${formatNumber(window.end)}] s`}
+            value={`(${formatNumber(outcome.intervalStartS)}, ${formatNumber(outcome.intervalEndS)}] s`}
           />
         )}
       </div>
 
       <div>
         <div className="text-[11px] font-semibold text-muted mb-0.5 mt-1">Action sent</div>
-        {actions === null && <div className="text-xs text-muted">none sent yet</div>}
-        {actions?.map((a) => (
-          <Row
-            key={a.slot}
-            label={`Slot ${a.slot} · ${a.nodeId ?? 'unknown node'}`}
-            value={`${a.actionName ?? 'unknown action'} (index ${a.actionIndex})`}
-          />
-        ))}
+        {join.kind === 'reset' && <div className="text-xs text-muted">none sent yet (reset)</div>}
+        {action && isUnavailable(action) && (
+          <div className="text-xs text-muted">unavailable — {action.reason}</div>
+        )}
+        {action &&
+          !isUnavailable(action) &&
+          action.requested.map((actionIndex, slot) => {
+            const revalidated = action.revalidatedSlots.includes(slot)
+            const applied =
+              action.applied.status === 'derived' ? action.applied.values[slot] : undefined
+            const appliedText =
+              revalidated && applied !== undefined && applied !== actionIndex
+                ? ` · applied (derived): ${actionName(applied)}`
+                : revalidated
+                  ? ' · revalidated'
+                  : ''
+            return (
+              <Row
+                key={slot}
+                label={slotLabel(slot)}
+                value={`${actionName(actionIndex)} (index ${actionIndex})${appliedText}`}
+              />
+            )
+          })}
+        {action && !isUnavailable(action) && action.applied.status === 'unavailable' && (
+          <div className="text-[11px] text-muted mt-1">
+            applied action: unavailable — {action.applied.reason}
+          </div>
+        )}
       </div>
 
-      <div>
-        <div className="text-[11px] font-semibold text-muted mb-0.5 mt-1">
-          Mask observed at decision time
-        </div>
-        {masks === null && (
-          <Warn>Mask length {step.mask.length} does not fit slots × actions.</Warn>
-        )}
-        {masks?.map((m) => (
-          <div key={m.slot} className="flex items-center gap-1 flex-wrap py-0.5">
-            <span className="text-xs text-muted mr-1">slot {m.slot}</span>
-            {m.actions.map((a) => (
-              <span
-                key={a.actionIndex}
-                title={a.allowed ? 'allowed' : 'masked out'}
-                className={`px-1 rounded border text-[10px] ${
-                  a.allowed
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-gray-100 border-gray-200 text-muted line-through'
-                }`}
-              >
-                {a.actionName}
-              </span>
-            ))}
+      {join.kind === 'action' && (
+        <div>
+          <div className="text-[11px] font-semibold text-muted mb-0.5 mt-1">
+            Pre-action mask (decision {record.decision - 1})
           </div>
-        ))}
-      </div>
+          {input?.status === 'missing_source' && (
+            <div className="text-xs text-muted">pre-action mask not recorded (sampled)</div>
+          )}
+          {input?.status === 'exact' && input.maskBySlot === null && (
+            <Warn>Mask length {input.mask.length} does not fit slots × actions.</Warn>
+          )}
+          {input?.status === 'exact' &&
+            input.maskBySlot?.map((m) => (
+              <div key={m.slot} className="flex items-center gap-1 flex-wrap py-0.5">
+                <span className="text-xs text-muted mr-1">slot {m.slot}</span>
+                {m.actions.map((a) => (
+                  <span
+                    key={a.actionIndex}
+                    title={a.allowed ? 'allowed' : 'masked out'}
+                    className={`px-1 rounded border text-[10px] ${
+                      a.allowed
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-gray-100 border-gray-200 text-muted line-through'
+                    }`}
+                  >
+                    {a.actionName}
+                  </span>
+                ))}
+              </div>
+            ))}
+        </div>
+      )}
 
       <div>
         <div className="text-[11px] font-semibold text-muted mb-0.5 mt-1">
           Reward earned in this interval
         </div>
-        {step.reward ? (
+        {record.reward ? (
           <>
-            {rewardComponents(step).map(([k, v]) => (
+            {rewardComponents(record).map(([k, v]) => (
               <Row key={k} label={k} value={formatNumber(v)} />
             ))}
-            <Row label="Total" value={formatNumber(step.reward.total)} />
-            {step.reward.source && <Row label="Source" value={step.reward.source} />}
+            <Row label="Total" value={formatNumber(record.reward.total)} />
+            {record.reward.source && <Row label="Source" value={record.reward.source} />}
           </>
         ) : (
           <div className="text-xs text-muted">not yet awarded</div>
@@ -285,46 +309,34 @@ function DecisionView({
 
       <Row
         label="Revalidated slots"
-        value={step.revalidated_slots.length ? step.revalidated_slots.join(', ') : 'none'}
+        value={record.revalidated_slots.length ? record.revalidated_slots.join(', ') : 'none'}
       />
     </div>
   )
 }
 
 function Telemetry({
-  catalog,
   episode,
+  telemetryState,
+  decisionIndex,
+  indexError,
   currentTime,
 }: {
-  catalog: ResultCatalog
   episode: Episode
+  telemetryState: TelemetryState
+  decisionIndex: DecisionIndex | null
+  indexError: string | null
   currentTime: number
 }) {
-  const [parsed, setParsed] = useState<ParseStepsResult | null>(null)
   const path = episode.files.steps
+  const telemetry: EpisodeTelemetry | null =
+    telemetryState.status === 'ready' ? telemetryState.telemetry : null
 
-  // Mounted only when its section is opened, so steps.jsonl is read on demand
-  useEffect(() => {
-    if (!path) return
-    let cancelled = false
-    readText(catalog, path)
-      .then((text) => {
-        if (cancelled) return
-        setParsed(
-          text === null ? { ok: false, message: `could not read ${path}` } : parseSteps(text)
-        )
-      })
-      .catch((err) => !cancelled && setParsed({ ok: false, message: String(err) }))
-    return () => {
-      cancelled = true
-    }
-  }, [catalog, path])
-
-  const step = useMemo(
-    () =>
-      parsed?.ok ? decisionAt(parsed.steps, currentTime, parsed.header.contract.tick_s) : null,
-    [parsed, currentTime]
-  )
+  const join = useMemo(() => {
+    if (!telemetry || !decisionIndex) return null
+    const decision = decisionAtTime(decisionIndex, currentTime)
+    return decision === null ? null : joinDecision(telemetry, decisionIndex, decision)
+  }, [telemetry, decisionIndex, currentTime])
 
   if (!path) {
     return (
@@ -333,20 +345,24 @@ function Telemetry({
       </div>
     )
   }
-  if (!parsed) return <div className="text-xs text-muted">Reading steps.jsonl…</div>
-  if (!parsed.ok) return <Warn>{parsed.message}</Warn>
+  if (telemetryState.status === 'idle' || telemetryState.status === 'loading')
+    return <div className="text-xs text-muted">Reading steps.jsonl…</div>
+  if (telemetryState.status === 'needs_explicit_load')
+    return (
+      <div className="text-xs text-muted">
+        {telemetryState.reason}. Use the Decisions tab to load it.
+      </div>
+    )
+  if (telemetryState.status === 'error') return <Warn>{telemetryState.error}</Warn>
+  if (indexError) return <Warn>{indexError}</Warn>
+  if (!telemetry || !decisionIndex) return null
   return (
     <div>
       <div className="text-[11px] text-muted mb-1">
-        Saved interval containing t={currentTime.toFixed(3)}s ({parsed.steps.length} records).
+        Saved interval containing t={currentTime.toFixed(3)}s ({telemetry.steps.length} records).
         Sparse telemetry leaves gaps; actions are never interpolated.
       </div>
-      <DecisionView
-        contract={parsed.header.contract}
-        step={step}
-        currentTime={currentTime}
-        tickS={parsed.header.contract.tick_s}
-      />
+      <DecisionView contract={telemetry.header.contract} join={join} currentTime={currentTime} />
     </div>
   )
 }
@@ -354,13 +370,13 @@ function Telemetry({
 function Switch({ on }: { on: boolean }) {
   return (
     <span
-      className={`relative inline-flex w-8 h-[18px] rounded-full flex-shrink-0 transition-colors ${
+      className={`relative inline-flex w-8 h-[18px] rounded-full flex-shrink-0 ${MOTION.colors} ${
         on ? 'bg-accent' : 'bg-ink/15'
       }`}
     >
       <span
-        className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-control transition-all ${
-          on ? 'left-[16px]' : 'left-[2px]'
+        className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-control transition-transform duration-fast ease-standard ${
+          on ? 'left-[2px] translate-x-[14px]' : 'left-[2px] translate-x-0'
         }`}
       />
     </span>
@@ -384,7 +400,8 @@ function PathCard({
   return (
     <button
       onClick={onToggle}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+      type="button"
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left ${MOTION.colors} ${
         on
           ? 'bg-white border-white shadow-control'
           : 'bg-white/40 border-hairline hover:bg-white/70'
@@ -458,8 +475,10 @@ function TrailOptions({
               return (
                 <button
                   key={n ?? 'all'}
+                  type="button"
+                  aria-pressed={active}
                   onClick={() => onNode(n)}
-                  className={`px-2 h-7 rounded-lg text-xs font-medium border transition-colors ${
+                  className={`px-2 h-7 rounded-lg text-xs font-medium border ${MOTION.colors} ${
                     active
                       ? 'bg-ink text-white border-ink'
                       : 'bg-white/70 text-ink-2 border-hairline hover:bg-white'
@@ -491,6 +510,10 @@ interface Props {
   evaluation: Evaluation
   episode: Episode
   currentTime: number
+  /** steps.jsonl, read once per player and shared with the Decisions tab */
+  telemetryState: TelemetryState
+  decisionIndex: DecisionIndex | null
+  indexError: string | null
   overlayOptions: OverlayOption[]
   overlayPolicies: string[]
   trailErrors: Record<string, string>
@@ -504,6 +527,9 @@ export function EpisodeDetails({
   evaluation,
   episode,
   currentTime,
+  telemetryState,
+  decisionIndex,
+  indexError,
   overlayOptions,
   overlayPolicies,
   trailErrors,
@@ -549,7 +575,9 @@ export function EpisodeDetails({
             selected={overlayPolicies}
             errors={trailErrors}
             onToggle={onToggleOverlay}
-            nodes={evaluation.contract?.slot_node_ids ?? []}
+            nodes={(evaluation.contract?.slot_node_ids ?? []).filter(
+              (id): id is string => typeof id === 'string'
+            )}
             node={trailNode}
             onNode={onTrailNode}
           />
@@ -559,9 +587,10 @@ export function EpisodeDetails({
       <div>
         <Disclosure title="Decision at this moment">
           <Telemetry
-            key={episode.dir}
-            catalog={catalog}
             episode={episode}
+            telemetryState={telemetryState}
+            decisionIndex={decisionIndex}
+            indexError={indexError}
             currentTime={currentTime}
           />
         </Disclosure>

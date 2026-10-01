@@ -28,6 +28,8 @@ import { ExperimentStatus, Note, StateBadge } from '../ExperimentStatus'
 import { Tag } from './shared'
 import { experimentLabel, policyLabel, rewardLabel } from '../../lib/rlLabels'
 import { ReplayPicker } from '../rl/ReplayPicker'
+import { MOTION } from '../../styles/motion'
+import { Skeleton } from '../ui/Skeleton'
 import {
   BaselineBadges,
   BaselineProvenance,
@@ -288,7 +290,7 @@ function EpisodeCell({
           episode.hasTelemetry ? '\nhas decision telemetry' : ''
         }`
       }
-      className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+      className={`w-full rounded-xl border px-3 py-2 text-left ${MOTION.colors} ${
         episode.playable
           ? 'bg-white/70 border-white/80 shadow-control hover:border-accent/50 hover:bg-white'
           : 'border-dashed border-hairline-strong bg-transparent cursor-not-allowed'
@@ -594,7 +596,10 @@ function EvaluationDetails({
             {training ? (
               <TrainingSummaryView summary={training} />
             ) : (
-              <div className="text-xs text-muted">Reading…</div>
+              <div role="status" aria-busy="true" aria-label="Reading training summary">
+                <span className="sr-only">Reading training summary…</span>
+                <Skeleton lines={3} />
+              </div>
             )}
           </Disclosure>
         </div>
@@ -640,7 +645,10 @@ function LearningForEvaluation({
         </Button>
       </div>
       {(!loaded || loaded.state === 'loading') && (
-        <div className="text-sm text-muted">Reading training run…</div>
+        <div role="status" aria-busy="true" aria-label="Reading training run">
+          <span className="sr-only">Reading training run…</span>
+          <Skeleton lines={3} />
+        </div>
       )}
       {loaded?.state === 'error' && <Note tone="error">{loaded.message}</Note>}
       {loaded?.state === 'ready' && <TrainingInsights run={loaded.value} />}
@@ -742,7 +750,7 @@ export function ExperimentPage({
                 setSelectedEvaluationKey((sameSeed ?? evaluation).key)
               }}
               aria-pressed={active}
-              className={`glass p-5 text-left transition-colors ${active ? 'ring-2 ring-accent/50 bg-white/85' : 'hover:bg-white/80'}`}
+              className={`glass p-5 text-left ${MOTION.surface} ${active ? 'ring-2 ring-accent/50 bg-white/85' : 'hover:bg-white/80'}`}
             >
               <div className="text-sm font-medium text-accent-ink">Reward variant</div>
               <div className="text-lg font-semibold text-ink-title mt-1">

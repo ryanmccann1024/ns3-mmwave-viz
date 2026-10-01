@@ -30,6 +30,25 @@ export default {
           '0 1px 2px rgba(10, 19, 36, 0.05), 0 14px 34px -16px rgba(10, 19, 36, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.7)',
         control: '0 1px 2px rgba(10, 19, 36, 0.06)',
       },
+      // Motion tokens: short, calm, one easing family. Paired with src/styles/motion.ts
+      transitionDuration: { fast: '120ms', base: '180ms', slow: '240ms' },
+      transitionTimingFunction: {
+        standard: 'cubic-bezier(0.2, 0, 0, 1)',
+        exit: 'cubic-bezier(0.4, 0, 1, 1)',
+      },
+      keyframes: {
+        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+        'rise-in': {
+          from: { opacity: '0', transform: 'translateY(4px)' },
+          to: { opacity: '1', transform: 'none' },
+        },
+        'pulse-soft': { '0%, 100%': { opacity: '1' }, '50%': { opacity: '.55' } },
+      },
+      animation: {
+        'fade-in': 'fade-in 180ms cubic-bezier(0.2, 0, 0, 1) both',
+        'rise-in': 'rise-in 180ms cubic-bezier(0.2, 0, 0, 1) both',
+        'pulse-soft': 'pulse-soft 1.4s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

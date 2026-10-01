@@ -128,14 +128,15 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
               return (
                 <Line
                   key={key}
-                  type="monotone"
+                  type="linear"
                   dataKey={key}
                   stroke={LINK_PALETTE[i % LINK_PALETTE.length]}
                   strokeWidth={isSelected ? 3 : 1.5}
                   strokeOpacity={hasSelection && !isSelected ? 0.15 : 1}
                   dot={false}
                   activeDot={{ r: 4, strokeWidth: 2 }}
-                  connectNulls
+                  connectNulls={false}
+                  isAnimationActive={false}
                 />
               )
             })}

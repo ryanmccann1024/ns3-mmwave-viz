@@ -143,9 +143,42 @@ telemetry appears only if the evaluation saved `steps.jsonl`; playback works wit
 information is a saved snapshot from `fetch_manifest.json`, not live queue status.
 
 **Decision timing.** A saved telemetry record describes the action applied and reward earned
-during the interval ending at that record's time. Its mask is the mask observed at that ending
-decision. The panel selects the saved interval containing the playback time; if telemetry was
+during the interval ending at that record's time. The mask that was valid *before* action n is
+the mask in record n−1, and that is the one shown next to action n ("pre-action mask (decision
+n−1)"). The panel selects the saved interval containing the playback time; if telemetry was
 sampled and no saved interval covers that time, it says so rather than displaying an older action.
+
+### Decisions tab
+
+Evaluation episodes have a **Decisions** tab beside Episode / Overview / Nodes / Log (on narrow
+screens the same tabs sit below the scene). It shows one chip per policy slot, a timeline over the
+whole decision range (holes where decisions were not saved are hatched, never filled in), a detail
+card and a scrolling list. Clicking a decision pauses playback and seeks to the last real frame
+inside that decision's outcome interval; if no frame lies inside, it says so instead of jumping to
+a nearby frame.
+
+What the card shows is only the evidence in `steps.jsonl`:
+
+- **Inputs** come from record n−1 exactly: its tick, time, observation hash and per-slot mask (plus
+  recorded `facts` when present). If decision n−1 was not saved, the group reads "not recorded";
+  the nearest earlier record is never substituted. The full observation vector is not in this file.
+- **Action** shows the requested action (`action_sent`), whether the pre-action mask allowed it, and
+  an **applied (derived)** action: the request with every revalidated slot replaced by the
+  contract's `hold`. "Derived" means computed from the recorded revalidation, not recorded by the
+  simulator; when the contract has no unique `hold`, applied is marked unavailable.
+- **Context** shows the outcome interval, network-wide reward total and components, and — when the
+  node mapping is proved — the selected node's incident links at the shown frame with their per-link
+  SINR / MCS / RX power. No per-node averages are computed.
+
+Node chips link to the 3D scene only when the telemetry contract's node order can be matched to the
+CSV node ids and the archived `inputs/nodes.json`; otherwise the tab says why and chips just filter.
+Hold, random and placement-baseline episodes use the same view. Nothing in the tab claims *why* the
+policy chose an action: model preferences are **not** in `steps.jsonl`. Reading them requires the
+simulator's opt-in decision-record sidecar (`policy_decisions.jsonl`, recorded per run only when
+enabled, with an adjustable on-disk cap); support for that sidecar, including selected training
+episodes (context and action only, no invented model preference), is a required follow-up to this
+tab once the simulator's schema is published. Episodes recorded with the sidecar off simply show
+"not saved".
 
 ## Controls
 
