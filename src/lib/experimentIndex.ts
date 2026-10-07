@@ -14,7 +14,12 @@ import type { BaselineManifest, IdentityCheck, ScenarioIdentity } from './baseli
 // Index of an experiment folder built from small manifests only. Every path is
 // catalog-relative; absolute paths recorded in manifests are never dereferenced.
 
-export const SUPPORTED_VERSIONS = { plan: 1, evalManifest: 2, trainManifest: 4, fetchManifest: 1 }
+export const SUPPORTED_VERSIONS = {
+  plan: 1,
+  evalManifest: [2, 3],
+  trainManifest: [4, 5],
+  fetchManifest: 1,
+}
 
 export type ArtifactState = 'ok' | 'incomplete' | 'failed' | 'missing' | 'not_fetched'
 export type RootKind = 'plan' | 'comparison' | 'eval'
@@ -216,10 +221,11 @@ async function readSmallJson(catalog: ResultCatalog, path: string) {
   }
 }
 
-function versionMessage(data: unknown, field: string, supported: number, path: string) {
+function versionMessage(data: unknown, field: string, supported: number | number[], path: string) {
   if (!isRec(data)) return `${path} is not a JSON object`
   if (!(field in data)) return `${path} has no ${field} (this viewer supports ${supported})`
-  if (data[field] !== supported) {
+  const versions = Array.isArray(supported) ? supported : [supported]
+  if (!versions.includes(data[field] as number)) {
     return `${path}: unsupported ${field} ${String(data[field])} (this viewer supports ${supported})`
   }
   return null

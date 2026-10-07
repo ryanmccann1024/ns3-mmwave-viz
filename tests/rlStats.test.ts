@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   actionShares,
   defaultWindow,
+  episodeMeanRewards,
   meanComponents,
   rewardByDecision,
   rolling,
@@ -67,4 +68,21 @@ test('actionShares counts every slot action and ignores unsent decisions', () =>
 
 test('meanComponents averages each component over the episodes that report it', () => {
   assert.deepEqual(meanComponents([{ a: 2, b: 1 }, { a: 4 }, null]), { a: 3, b: 1 })
+})
+
+test('episodeMeanRewards averages timesteps within rows before averaging independent seeds', () => {
+  const e = (index: number, total: number | null, decisions: number | null, counted = true) => ({
+    index,
+    return: total,
+    decisions,
+    counted,
+  })
+  const curve = episodeMeanRewards([
+    { episodes: [e(1, 6, 3), e(2, 8, 4), e(3, 2, 0), e(4, 9, 3, false)] },
+    { episodes: [e(1, 8, 2), e(2, null, 4)] },
+  ])
+  assert.deepEqual(curve, [
+    { episode: 1, meanReward: 3, returnMean: 7, range: [2, 4], seeds: 2, decisions: [2, 3] },
+    { episode: 2, meanReward: 2, returnMean: 8, range: [2, 2], seeds: 1, decisions: [4] },
+  ])
 })

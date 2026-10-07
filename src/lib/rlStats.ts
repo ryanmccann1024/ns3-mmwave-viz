@@ -100,3 +100,46 @@ export function meanComponents(sums: (Record<string, number> | null)[]): Record<
   }
   return Object.fromEntries(Object.entries(totals).map(([k, t]) => [k, t.sum / t.n]))
 }
+
+export interface EpisodeRewardPoint {
+  episode: number
+  meanReward: number
+  returnMean: number
+  range: [number, number]
+  seeds: number
+  decisions: number[]
+}
+
+/** Average each episode's timestep rewards, then average matching episodes across runs. */
+export function episodeMeanRewards(
+  runs: {
+    episodes: { index: number; counted: boolean; return: number | null; decisions: number | null }[]
+  }[]
+): EpisodeRewardPoint[] {
+  const rows = new Map<number, { reward: number; total: number; decisions: number }[]>()
+  for (const run of runs) {
+    for (const e of run.episodes) {
+      if (
+        !e.counted ||
+        e.return === null ||
+        !Number.isFinite(e.return) ||
+        !e.decisions ||
+        e.decisions <= 0
+      )
+        continue
+      const row = rows.get(e.index) ?? []
+      row.push({ reward: e.return / e.decisions, total: e.return, decisions: e.decisions })
+      rows.set(e.index, row)
+    }
+  }
+  return [...rows.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([episode, row]) => ({
+      episode,
+      meanReward: row.reduce((sum, e) => sum + e.reward, 0) / row.length,
+      returnMean: row.reduce((sum, e) => sum + e.total, 0) / row.length,
+      range: [Math.min(...row.map((e) => e.reward)), Math.max(...row.map((e) => e.reward))],
+      seeds: row.length,
+      decisions: [...new Set(row.map((e) => e.decisions))].sort((a, b) => a - b),
+    }))
+}

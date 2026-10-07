@@ -230,7 +230,7 @@ export function TrainingRunPage({
             />
           </div>
           <div key={tab} className={MOTION.enter}>
-            {tab === 'learning' && <TrainingInsights run={run} />}
+            {tab === 'learning' && <TrainingInsights run={run} catalog={catalog} />}
             {tab === 'episodes' && <EpisodeTable run={run} onPlay={(e) => onPlay(run, e)} />}
             {tab === 'details' && <Details run={run} />}
           </div>

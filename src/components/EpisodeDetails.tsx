@@ -264,9 +264,9 @@ function TrailOptions({
         ))}
       </div>
       {nodes.length > 1 && (
-        <div className="flex flex-col gap-1.5 mt-1">
-          <div className="text-base font-medium text-ink-2">Show paths for</div>
-          <div className="self-start max-w-full flex rounded-xl border border-hairline bg-white shadow-control overflow-x-auto divide-x divide-hairline">
+        <div className="flex flex-col gap-2 mt-3">
+          <div className="text-base font-medium text-ink">Show paths for</div>
+          <div className="flex flex-col rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-y divide-hairline">
             {[null, ...nodes].map((n) => {
               const active = node === n
               return (
@@ -275,7 +275,7 @@ function TrailOptions({
                   type="button"
                   aria-pressed={active}
                   onClick={() => onNode(n)}
-                  className={`h-10 px-3.5 text-base whitespace-nowrap ${MOTION.colors} ${
+                  className={`h-11 px-4 text-left text-base truncate ${MOTION.colors} ${
                     active
                       ? 'bg-accent-wash text-accent-ink font-semibold'
                       : 'text-ink-2 font-medium hover:bg-accent-wash/60 hover:text-ink'

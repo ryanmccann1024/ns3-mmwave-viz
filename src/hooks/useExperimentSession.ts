@@ -11,12 +11,13 @@ export interface OverlayOption {
   episode: Episode
 }
 
-interface TrailEntry {
+export interface TrailEntry {
   trails: Trail[]
   error: string | null
 }
 
-async function readTrails(
+/** The controlled nodes' paths in one episode, drawn in that episode's policy colour */
+export async function readTrails(
   catalog: ResultCatalog,
   evaluation: Evaluation,
   episode: Episode

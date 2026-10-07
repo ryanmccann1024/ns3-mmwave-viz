@@ -208,8 +208,8 @@ export function CheckpointChart({
   })
   return (
     <ChartCard
-      title="Checkpoint tests on the model-selection seed"
-      subtitle={`At each checkpoint the current policy is tested${evalSeed !== null ? ` on seed ${evalSeed}` : ''}; the best one is saved. Shading spans the tested episodes.`}
+      title="Checkpoint evaluation return"
+      subtitle={`At each saved training step count, the policy is tested without learning. Each point averages ${checkpoints[0]?.returns.length ?? 0} validation episodes${checkpoints[0]?.returns.length === 1 && evalSeed !== null ? ` on seed ${evalSeed}` : ''}; shading shows their range.`}
       legend={[{ label: 'Mean return', color }]}
     >
       <ResponsiveContainer width="100%" height="100%">
@@ -221,7 +221,7 @@ export function CheckpointChart({
             domain={['dataMin', 'dataMax']}
             {...AXIS}
             label={{
-              value: 'Timesteps',
+              value: 'Training decisions',
               position: 'insideBottom',
               offset: -8,
               ...AXIS_LABEL,

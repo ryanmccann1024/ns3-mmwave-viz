@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
-import type { TrainingRun } from '../../lib/trainingRun'
-import { defaultWindow, rolling } from '../../lib/rlStats'
+import { useEffect, useMemo, useState } from 'react'
+import { discoverTrainingRuns, loadTrainingRun, type TrainingRun } from '../../lib/trainingRun'
+import type { ResultCatalog } from '../../lib/resultCatalog'
+import { EpisodeMeanRewardChart } from '../charts/EpisodeMeanRewardChart'
+import { defaultWindow, episodeMeanRewards, rolling } from '../../lib/rlStats'
 import { shortNumber } from '../../lib/format'
 import { CheckpointChart, ComponentTrendChart, LearningCurveChart } from '../charts/RlCharts'
 import { Note } from '../ExperimentStatus'
@@ -17,7 +19,54 @@ function Tile({ value, label }: { value: string; label: string }) {
 }
 
 /** Learning curve, periodic evaluations and reward make-up for one training run */
-export function TrainingInsights({ run }: { run: TrainingRun }) {
+export function TrainingInsights({ run, catalog }: { run: TrainingRun; catalog?: ResultCatalog }) {
+  const [family, setFamily] = useState<{
+    root: string
+    runs: TrainingRun[]
+    errors: number
+  } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const parent = run.root.slice(0, run.root.lastIndexOf('/'))
+    const roots =
+      catalog && /(?:^|\/)train-seed-\d+$/.test(run.root)
+        ? discoverTrainingRuns(catalog).filter(
+            (root) => root !== run.root && root.slice(0, root.lastIndexOf('/')) === parent
+          )
+        : []
+    const signature = (r: TrainingRun) =>
+      JSON.stringify([
+        r.algorithm,
+        r.rewardComponents,
+        r.rewardWeights,
+        r.actionMeanings,
+        r.slotNodeIds,
+        r.hyperparameters,
+      ])
+    Promise.allSettled(roots.map((root) => loadTrainingRun(catalog!, root))).then((results) => {
+      if (cancelled) return
+      const seeds = new Set([run.seed])
+      const runs = [run]
+      let errors = 0
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          errors++
+          continue
+        }
+        const peer = result.value
+        if (peer.seed !== null && !seeds.has(peer.seed) && signature(peer) === signature(run)) {
+          runs.push(peer)
+          seeds.add(peer.seed)
+        }
+      }
+      setFamily({ root: run.root, runs, errors })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [run, catalog])
+  const runs = useMemo(() => (family?.root === run.root ? family.runs : [run]), [family, run])
+  const episodeCurve = useMemo(() => episodeMeanRewards(runs), [runs])
   const counted = useMemo(() => run.episodes.filter((e) => e.counted && e.return !== null), [run])
   const window = defaultWindow(counted.length)
   const curve = useMemo(
@@ -84,6 +133,13 @@ export function TrainingInsights({ run }: { run: TrainingRun }) {
         />
       </div>
 
+      <EpisodeMeanRewardChart points={episodeCurve} seedCount={runs.length} />
+      {family?.root === run.root && family.errors > 0 && (
+        <Note>
+          {family.errors} other training runs could not be read; the curve includes the available
+          seeds.
+        </Note>
+      )}
       <LearningCurveChart points={curve} window={window} />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

@@ -28,6 +28,7 @@ const LINK_PALETTE = [
 interface Props {
   series: MetricSeries[]
   config: MetricConfig
+  seriesLabel?: (key: string, compact?: boolean) => string
   /** the playback time right now, read every animation frame (moves between saved frames) */
   playheadTime: () => number
   selectedKey: string | null
@@ -39,7 +40,14 @@ const MARGIN = { top: 12, right: 24, left: 4, bottom: 4 }
 const Y_AXIS_WIDTH = 56
 const X_AXIS_HEIGHT = 30
 
-export function MetricChart({ series, config, playheadTime, selectedKey, onSelectKey }: Props) {
+export function MetricChart({
+  series,
+  config,
+  seriesLabel,
+  playheadTime,
+  selectedKey,
+  onSelectKey,
+}: Props) {
   const { chartData, keys } = useMemo(() => {
     const timeMap = new Map<number, Record<string, number>>()
     const ks = series.map((s) => s.key)
@@ -97,6 +105,8 @@ export function MetricChart({ series, config, playheadTime, selectedKey, onSelec
   const tooltipSuffix = config.unit ? ` ${config.unit}` : ''
   const isFlowMetric = config.source === 'flow'
   const keyPrefix = isFlowMetric ? 'Flow ' : 'Link '
+  const label = (key: string) => seriesLabel?.(key) ?? `${keyPrefix}${key}`
+  const legendLabel = (key: string) => seriesLabel?.(key, true) ?? `${keyPrefix}${key}`
 
   return (
     <div className="flex flex-col h-full">
@@ -134,7 +144,7 @@ export function MetricChart({ series, config, playheadTime, selectedKey, onSelec
               }}
               formatter={(value, name) => [
                 `${Number(value).toFixed(1)}${tooltipSuffix}`,
-                `${keyPrefix}${name}`,
+                label(String(name)),
               ]}
               labelFormatter={(label) => `${Number(label).toFixed(1)} s`}
             />
@@ -147,11 +157,13 @@ export function MetricChart({ series, config, playheadTime, selectedKey, onSelec
                   key={key}
                   type="linear"
                   dataKey={key}
+                  className={`${MOTION.chart} [&_.recharts-line-curve]:cursor-pointer`}
+                  onClick={() => onSelectKey(key)}
                   stroke={LINK_PALETTE[i % LINK_PALETTE.length]}
                   strokeWidth={isSelected ? 3 : 1.5}
                   strokeOpacity={hasSelection && !isSelected ? 0.15 : 1}
                   dot={false}
-                  activeDot={{ r: 4, strokeWidth: 2 }}
+                  activeDot={{ r: 4, strokeWidth: 2, onClick: () => onSelectKey(key) }}
                   connectNulls={false}
                   isAnimationActive={false}
                 />
@@ -162,26 +174,30 @@ export function MetricChart({ series, config, playheadTime, selectedKey, onSelec
       </div>
 
       {/* Custom scrollable legend */}
-      <div className="max-h-24 overflow-y-auto px-4 py-3 border-t border-hairline">
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
+      <div className="min-w-0 flex-shrink-0 max-h-24 sm:max-h-32 overflow-y-auto overflow-x-hidden px-3 py-2 border-t border-hairline">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-2">
           {keys.map((key, i) => {
             const isSelected = selectedKey === key
             return (
               <button
                 key={key}
+                type="button"
                 onClick={() => onSelectKey(key)}
-                className={`flex items-center gap-2 text-base ${MOTION.colors} ${
-                  isSelected ? 'font-semibold text-ink' : 'text-ink-2 hover:text-ink'
+                aria-pressed={isSelected}
+                aria-label={label(key)}
+                title={label(key)}
+                className={`flex w-full min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm font-medium active:scale-[0.98] ${MOTION.select} ${
+                  isSelected
+                    ? 'border-accent/30 bg-accent-wash text-accent-ink shadow-control'
+                    : 'border-transparent text-ink-2 hover:bg-white/80 hover:text-ink'
                 }`}
               >
                 <span
-                  className="w-4 h-1 rounded-full"
+                  aria-hidden="true"
+                  className={`w-4 h-1 flex-shrink-0 rounded-full ${MOTION.lift} ${isSelected ? 'scale-x-125' : ''}`}
                   style={{ backgroundColor: LINK_PALETTE[i % LINK_PALETTE.length] }}
                 />
-                <span>
-                  {keyPrefix}
-                  {key}
-                </span>
+                <span className="min-w-0 truncate">{legendLabel(key)}</span>
               </button>
             )
           })}

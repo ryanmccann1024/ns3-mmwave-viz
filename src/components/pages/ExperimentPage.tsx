@@ -651,7 +651,7 @@ function LearningForEvaluation({
         </div>
       )}
       {loaded?.state === 'error' && <Note tone="error">{loaded.message}</Note>}
-      {loaded?.state === 'ready' && <TrainingInsights run={loaded.value} />}
+      {loaded?.state === 'ready' && <TrainingInsights run={loaded.value} catalog={catalog} />}
     </div>
   )
 }
@@ -783,10 +783,13 @@ export function ExperimentPage({
                     </span>
                   </div>
                   <div className="w-full grid grid-cols-3 gap-4">
-                    <Figure value={pct0(result('model', 'delivery_ratio'))} label="Model" />
+                    <Figure
+                      value={pct0(result('model', 'delivery_ratio'))}
+                      label="Model delivery"
+                    />
                     <Figure
                       value={pct0(baselines.length ? Math.max(...baselines) : null)}
-                      label="Best baseline"
+                      label="Baseline delivery"
                     />
                     <Figure
                       value={travel === null ? '–' : `${Math.round(travel).toLocaleString()} m`}

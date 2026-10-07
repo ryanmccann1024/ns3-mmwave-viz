@@ -122,6 +122,7 @@ export function Scene({
 
   return (
     <>
+      {/* Camera and controls remount together, so the controls never hold a disposed camera */}
       <PerspectiveCamera
         key={`cam-${dimensions}`}
         makeDefault
@@ -133,6 +134,7 @@ export function Scene({
 
       {dimensions === 2 ? (
         <OrbitControls
+          key={`controls-${dimensions}`}
           target={[sceneCX, 0, sceneCY]}
           makeDefault
           enableRotate={false}
@@ -144,6 +146,7 @@ export function Scene({
         />
       ) : dimensions === 1 ? (
         <OrbitControls
+          key={`controls-${dimensions}`}
           target={[sceneCX, 0, 0]}
           makeDefault
           minPolarAngle={Math.PI / 2 - 0.15}
@@ -156,6 +159,7 @@ export function Scene({
         />
       ) : (
         <OrbitControls
+          key={`controls-${dimensions}`}
           target={[sceneCX, 0, sceneCY]}
           makeDefault
           minDistance={10 * scale}

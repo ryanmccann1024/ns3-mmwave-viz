@@ -30,6 +30,7 @@ import { ChartsView } from '../charts/ChartsView'
 import { PlaybackControls } from '../PlaybackControls'
 import { EpisodeDetails } from '../EpisodeDetails'
 import { ReplayPicker } from '../rl/ReplayPicker'
+import { ReplayComparison } from '../rl/ReplayComparison'
 import { EventLog } from '../EventLog'
 import { FlowList, LinkDetail, LinkLegend, NodeDetail, NodeList } from '../InfoPanel'
 import type { Crumb } from '../ui/Breadcrumbs'
@@ -135,7 +136,7 @@ function useBaselinePlan(catalog: ResultCatalog | null, planPath: string | null)
   return plan
 }
 
-type View = 'canvas' | 'charts' | 'decisions'
+type View = 'canvas' | 'charts' | 'decisions' | 'comparison'
 type Tab = 'overview' | 'nodes' | 'episode' | 'log'
 
 const PANEL_KEY = 'player.panelOpen'
@@ -267,6 +268,7 @@ export function PlayerPage({
     baseline?.meta.planPath ?? evalBaseline?.planPath ?? null
   )
   const [view, setView] = useState<View>('canvas')
+  const [compareDimensions, setCompareDimensions] = useState<2 | 3>(3)
   const [showPlacement, setShowPlacement] = useState(true)
   const tabs: { value: Tab; label: string }[] = [
     ...(rl ? [{ value: 'episode' as const, label: 'Episode' }] : []),
@@ -717,13 +719,29 @@ export function PlayerPage({
           options={[
             { value: 'canvas', label: '3D' },
             { value: 'charts', label: 'Charts' },
-            ...(rl ? [{ value: 'decisions' as const, label: 'Decisions' }] : []),
+            ...(rl
+              ? [
+                  { value: 'comparison' as const, label: 'Compare' },
+                  { value: 'decisions' as const, label: 'Decisions' },
+                ]
+              : []),
           ]}
           value={view}
           onChange={setView}
         />
         <div className="ml-auto flex items-center gap-3">
-          {isDesktop && (
+          {view === 'comparison' && (
+            <Segmented
+              size="lg"
+              options={[
+                { value: 3 as const, label: '3D' },
+                { value: 2 as const, label: 'Top down' },
+              ]}
+              value={compareDimensions}
+              onChange={setCompareDimensions}
+            />
+          )}
+          {isDesktop && view !== 'comparison' && (
             <button
               type="button"
               onClick={() => setPanelOpen(!panelOpen)}
@@ -813,10 +831,24 @@ export function PlayerPage({
                 </div>
               </div>
             </div>
+          ) : view === 'comparison' && rl ? (
+            <div className={`flex flex-col flex-1 min-h-0 ${MOTION.enterFade}`}>
+              <ReplayComparison
+                key={`${rl.episode.seed}-${rl.episode.evaluationKey}`}
+                catalog={rl.catalog}
+                evaluations={rl.evaluations}
+                current={rl.episode}
+                time={frame.time}
+                nextTime={sim.nextFrame?.time ?? null}
+                alpha={sim.frameAlphaRef}
+                dimensions={compareDimensions}
+              />
+            </div>
           ) : view === 'charts' ? (
             <div className={`flex-1 min-h-0 ${MOTION.enterFade}`}>
               <ChartsView
                 frames={sim.frames}
+                declaredNodeIds={sim.declaredNodeIds}
                 frameIndex={sim.frameIndex}
                 frameAlphaRef={sim.frameAlphaRef}
                 selectedLink={selectedLink}
@@ -845,7 +877,7 @@ export function PlayerPage({
             onSetSpeed={onSetSpeed}
           />
 
-          {!isDesktop && (
+          {!isDesktop && view !== 'comparison' && (
             <div className="glass flex flex-col min-h-0 max-h-[45dvh] flex-shrink-0">
               <div className="p-3 flex-shrink-0 overflow-x-auto">{tabBar}</div>
               <div
@@ -858,7 +890,7 @@ export function PlayerPage({
           )}
         </div>
 
-        {isDesktop && (
+        {isDesktop && view !== 'comparison' && (
           // The panel keeps its width inside a wrapper that slides between 0 and full, so its
           // content never reflows mid-animation; the scene beside it widens smoothly
           <div

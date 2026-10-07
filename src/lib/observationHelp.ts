@@ -95,12 +95,12 @@ export function describeFeature(name: string, contract: EvalContract | null): Fe
     ],
     cap_n: [
       'Link capacity, normalized',
-      'Estimated capacity of this peer link, not delivered traffic.',
+      'Current simulator-computed capacity of this peer link, derived from SINR and the configured rate model; not delivered traffic.',
       'clip(log10(1 + capacity in Mbps) / 4, 0, 1).',
     ],
     capacity_mbps: [
       'Link capacity',
-      'Estimated capacity of this peer link.',
+      'Current simulator-computed capacity of this peer link, derived from SINR and the configured rate model.',
       'No normalization; units are Mbps.',
     ],
     is_los: [

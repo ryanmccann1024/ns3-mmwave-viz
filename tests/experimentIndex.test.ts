@@ -654,3 +654,15 @@ test('baseline-policy episodes keep null metrics and statuses as recorded', asyn
   assert.equal(episode.exitCode, null)
   assert.deepEqual(episode.metrics, { delivery_ratio: null, mean_throughput_mbps: 3.5 })
 })
+
+test('old and current evaluation manifest versions load without a version warning', async () => {
+  for (const version of [2, 3]) {
+    const catalog = fakeCatalog({
+      'eval_manifest.json': manifest('rowA', 1, [301], { eval_manifest_version: version }),
+    })
+    const experiment = await loadExperiment(catalog, '')
+    assert.ok(
+      !experiment.issues.some((issue) => issue.includes('unsupported eval_manifest_version'))
+    )
+  }
+})

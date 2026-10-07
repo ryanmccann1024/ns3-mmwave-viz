@@ -1,5 +1,5 @@
 import type { MutableRefObject } from 'react'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { SimFrame } from '../../types'
 import {
   useMetricSeries,
@@ -10,9 +10,12 @@ import {
 import { MetricChart } from './MetricChart'
 import { Segmented } from '../ui/Segmented'
 import { MOTION } from '../../styles/motion'
+import { buildNodeMapping, type DeclaredNodeIds } from '../../lib/nodeIdentity'
+import { NODE_LABELS } from '../../styles/tokens'
 
 interface Props {
   frames: SimFrame[]
+  declaredNodeIds?: DeclaredNodeIds
   frameIndex: number
   /** 0..1 progress toward the next frame, advanced every animation frame */
   frameAlphaRef?: MutableRefObject<number>
@@ -25,6 +28,7 @@ interface Props {
 
 export function ChartsView({
   frames,
+  declaredNodeIds,
   frameIndex,
   frameAlphaRef,
   selectedLink,
@@ -44,6 +48,36 @@ export function ChartsView({
   const setSelectedMetric = (metric: MetricId) => setChosenMetric(metric)
   const series = useMetricSeries(frames, selectedMetric)
   const config = METRICS.find((m) => m.id === selectedMetric)!
+  const nodeLabels = useMemo(() => {
+    const nodes = frames[0]?.nodes ?? []
+    const mapping =
+      declaredNodeIds?.status === 'valid'
+        ? buildNodeMapping(
+            { node_ids: declaredNodeIds.ids, slot_node_ids: [] },
+            new Set(nodes.map((node) => node.id))
+          )
+        : null
+    return new Map(
+      nodes.map((node) => [
+        node.id,
+        mapping?.status === 'mapped'
+          ? { name: mapping.contractIdByCsvId.get(node.id)!, id: node.id }
+          : { name: `${NODE_LABELS[node.nodeType]} ${node.id}`, id: node.id },
+      ])
+    )
+  }, [frames, declaredNodeIds])
+  const seriesLabel = (key: string, compact = false) => {
+    const endpoints = key.match(/^(\d+)(-|→)(\d+)$/)
+    if (!endpoints) return key
+    const label = (id: string) => {
+      const node = nodeLabels.get(Number(id))
+      if (!node) return `Node ${id}`
+      return compact ? node.name : `${node.name} (node ${node.id})`
+    }
+    if (compact)
+      return `${label(endpoints[1])} ${config.source === 'flow' ? 'to' : '/'} ${label(endpoints[3])}`
+    return `${config.source === 'flow' ? 'Flow' : 'Link'}: ${label(endpoints[1])} ${endpoints[2] === '→' ? '→' : '↔'} ${label(endpoints[3])}`
+  }
   // Read by the chart every animation frame: the frame time plus how far toward the next one
   const playheadTime = useCallback(() => {
     const a = frames[frameIndex]?.time ?? 0
@@ -76,6 +110,7 @@ export function ChartsView({
         <MetricChart
           series={series}
           config={config}
+          seriesLabel={seriesLabel}
           playheadTime={playheadTime}
           selectedKey={selectedLink}
           onSelectKey={onSelectLink}
