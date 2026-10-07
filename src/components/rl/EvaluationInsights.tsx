@@ -62,20 +62,20 @@ export function EvaluationInsights({
     : []
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 sm:gap-5">
       {telemetry?.state === 'loading' && (
-        <div className="glass p-4 text-sm text-muted">Reading decision telemetry…</div>
+        <div className="glass p-6 text-base text-ink-2">Reading decision telemetry…</div>
       )}
       {telemetry?.state === 'error' && <Note tone="warn">{telemetry.message}</Note>}
       {decisionSeries.length > 0 && <RewardByDecisionChart series={decisionSeries} />}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="flex flex-col gap-4 sm:gap-5">
         {actionRows.length > 0 && ready && (
           <ActionShareChart rows={actionRows} actions={ready.actionMeanings} />
         )}
         {components.length > 0 && <RewardSourceChart rows={sourceRows} components={components} />}
       </div>
       {ready && ready.missing > 0 && (
-        <div className="text-sm text-muted">
+        <div className="text-base text-ink-2">
           {ready.missing} completed episode{ready.missing === 1 ? '' : 's'} saved no readable
           decision telemetry and {ready.missing === 1 ? 'is' : 'are'} left out of the decision and
           action charts.

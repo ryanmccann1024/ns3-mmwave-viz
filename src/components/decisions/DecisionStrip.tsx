@@ -26,11 +26,12 @@ interface Props {
 }
 
 const COLORS = {
-  reward: 'rgba(10, 19, 36, 0.62)',
+  reward: '#1e63e9',
+  wash: 'rgba(30, 99, 233, 0.10)',
   zero: 'rgba(10, 19, 36, 0.18)',
   reval: '#7c3aed',
   gap: 'rgba(148, 163, 184, 0.9)',
-  select: '#1e63e9',
+  select: '#0a1324',
   brush: 'rgba(30, 99, 233, 0.14)',
   brushEdge: 'rgba(30, 99, 233, 0.6)',
   hover: 'rgba(10, 19, 36, 0.12)',
@@ -72,7 +73,7 @@ export function DecisionStrip({
   onBrush,
   navRange,
   label,
-  heightClass = 'h-[72px] max-sm:h-14',
+  heightClass = 'h-24 max-sm:h-16',
   coverageKnown,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -142,21 +143,43 @@ export function DecisionStrip({
       ctx.fillStyle = COLORS.zero
       ctx.fillRect(0, Math.round(yOf(0)), columns, 1)
     }
+    // Reward as a line with a soft wash beneath it; a gap breaks the line
+    const runs: { x: number; y: number }[][] = []
+    let run: { x: number; y: number }[] = []
     for (const b of buckets) {
       if (b.hasGap) {
         ctx.fillStyle = pattern
         ctx.fillRect(b.x, 0, 1, h)
       }
+      // Columns between two saved decisions are simply bridged; only a recorded gap breaks
+      if (b.hasGap && run.length) {
+        runs.push(run)
+        run = []
+      }
       if (b.count > 0 && !Number.isNaN(b.minReward)) {
-        const y1 = yOf(b.maxReward)
-        const y2 = yOf(b.minReward)
-        ctx.fillStyle = COLORS.reward
-        ctx.fillRect(b.x, Math.min(y1, y2), 1, Math.max(2, Math.abs(y2 - y1)))
+        run.push({ x: b.x + 0.5, y: yOf((b.minReward + b.maxReward) / 2) })
       }
       if (b.revalCount > 0) {
         ctx.fillStyle = COLORS.reval
         ctx.fillRect(b.x, 0, 1, 3)
       }
+    }
+    if (run.length) runs.push(run)
+    for (const r of runs) {
+      ctx.beginPath()
+      ctx.moveTo(r[0].x, bottom)
+      for (const p of r) ctx.lineTo(p.x, p.y)
+      ctx.lineTo(r[r.length - 1].x, bottom)
+      ctx.closePath()
+      ctx.fillStyle = COLORS.wash
+      ctx.fill()
+      ctx.beginPath()
+      r.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+      ctx.strokeStyle = COLORS.reward
+      ctx.lineWidth = 2
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
+      ctx.stroke()
     }
     if (!coverageKnown && buckets.length > 0) {
       // Trailing coverage unknown: a faint end marker, never a fabricated tail
@@ -302,10 +325,10 @@ export function DecisionStrip({
   const readoutId = `${label.replace(/\s+/g, '-').toLowerCase()}-readout`
   const readout = hovered
     ? hovered.count === 0
-      ? `decision${hovered.firstDecision === hovered.lastDecision ? '' : 's'} ${hovered.firstDecision}${
+      ? `Decision${hovered.firstDecision === hovered.lastDecision ? '' : 's'} ${hovered.firstDecision}${
           hovered.firstDecision === hovered.lastDecision ? '' : `–${hovered.lastDecision}`
         } · ${hovered.hasGap ? 'not recorded' : 'outside saved range'}`
-      : `decision${hovered.count === 1 ? '' : 's'} ${hovered.firstDecision}${
+      : `Decision${hovered.count === 1 ? '' : 's'} ${hovered.firstDecision}${
           hovered.firstDecision === hovered.lastDecision ? '' : `–${hovered.lastDecision}`
         } · ${hovered.count} saved${hovered.hasGap ? ' · has holes' : ''} · reward ${
           hovered.count === 1
@@ -313,11 +336,11 @@ export function DecisionStrip({
             : `${fmt(hovered.minReward)}…${fmt(hovered.maxReward)}`
         }${hovered.revalCount > 0 ? ` · ${hovered.revalCount} revalidated` : ''}`
     : selectedDecision !== null
-      ? `decision ${selectedDecision} selected`
-      : 'hover or use arrow keys to inspect decisions'
+      ? `Decision ${selectedDecision} selected`
+      : 'Hover, or use the arrow keys, to inspect decisions'
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <div
         ref={wrapRef}
         role="group"
@@ -330,7 +353,7 @@ export function DecisionStrip({
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerLeave}
         onDoubleClick={() => onBrush?.(null)}
-        className={`relative w-full ${heightClass} rounded-lg bg-white/70 border border-hairline overflow-hidden cursor-crosshair select-none touch-none`}
+        className={`relative w-full ${heightClass} rounded-xl bg-white border border-hairline overflow-hidden cursor-crosshair select-none touch-none`}
       >
         <canvas ref={baseRef} className="absolute inset-0 w-full h-full" aria-hidden="true" />
         <canvas ref={overlayRef} className="absolute inset-0 w-full h-full" aria-hidden="true" />
@@ -338,7 +361,7 @@ export function DecisionStrip({
       <div
         id={readoutId}
         aria-live="polite"
-        className="text-[11px] text-muted font-mono tabular-nums truncate min-h-[1rem]"
+        className="text-base text-ink-2 tabular-nums truncate min-h-6"
       >
         {readout}
       </div>

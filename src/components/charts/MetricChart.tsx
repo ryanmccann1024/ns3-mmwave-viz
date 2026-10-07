@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   LineChart,
   Line,
@@ -6,10 +6,11 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
 import type { MetricSeries, MetricConfig } from '../../hooks/useMetricSeries'
+import { AXIS, GRID, INK_2 } from './chartStyle'
+import { MOTION } from '../../styles/motion'
 
 const LINK_PALETTE = [
   '#0ea5e9',
@@ -27,12 +28,18 @@ const LINK_PALETTE = [
 interface Props {
   series: MetricSeries[]
   config: MetricConfig
-  currentTime: number
+  /** the playback time right now, read every animation frame (moves between saved frames) */
+  playheadTime: () => number
   selectedKey: string | null
   onSelectKey: (key: string) => void
 }
 
-export function MetricChart({ series, config, currentTime, selectedKey, onSelectKey }: Props) {
+// Plot-area geometry, matching the LineChart margins and axis sizes below
+const MARGIN = { top: 12, right: 24, left: 4, bottom: 4 }
+const Y_AXIS_WIDTH = 56
+const X_AXIS_HEIGHT = 30
+
+export function MetricChart({ series, config, playheadTime, selectedKey, onSelectKey }: Props) {
   const { chartData, keys } = useMemo(() => {
     const timeMap = new Map<number, Record<string, number>>()
     const ks = series.map((s) => s.key)
@@ -52,74 +59,84 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
     return { chartData: data, keys: ks }
   }, [series])
 
+  // The "now" line is drawn over the plot and moved every animation frame, so it slides
+  // continuously instead of stepping once per saved frame like a chart re-render would
+  const plotRef = useRef<HTMLDivElement>(null)
+  const playheadRef = useRef<HTMLDivElement>(null)
+  const timeRef = useRef(playheadTime)
+  useEffect(() => {
+    timeRef.current = playheadTime
+  }, [playheadTime])
+  const t0 = chartData.length ? chartData[0].time : 0
+  const t1 = chartData.length ? chartData[chartData.length - 1].time : 0
+  useEffect(() => {
+    let raf = 0
+    const draw = () => {
+      const plot = plotRef.current
+      const line = playheadRef.current
+      if (plot && line) {
+        const left = MARGIN.left + Y_AXIS_WIDTH
+        const width = plot.clientWidth - left - MARGIN.right
+        const p = t1 > t0 ? (timeRef.current() - t0) / (t1 - t0) : 0
+        line.style.transform = `translateX(${left + Math.min(1, Math.max(0, p)) * width}px)`
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(raf)
+  }, [t0, t1])
+
   if (series.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-muted text-sm">
+      <div className="flex items-center justify-center h-full text-ink-2 text-base">
         No {config.label} data available
       </div>
     )
   }
 
-  const yLabel = config.unit ? `${config.label} (${config.unit})` : config.label
   const tooltipSuffix = config.unit ? ` ${config.unit}` : ''
   const isFlowMetric = config.source === 'flow'
   const keyPrefix = isFlowMetric ? 'Flow ' : 'Link '
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 min-h-0">
+      <div ref={plotRef} className="relative flex-1 min-h-0">
+        <div
+          ref={playheadRef}
+          aria-hidden="true"
+          className="absolute left-0 w-0 border-l-2 border-dashed border-accent pointer-events-none z-10"
+          style={{ top: MARGIN.top, bottom: MARGIN.bottom + X_AXIS_HEIGHT }}
+        />
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(10,19,36,0.08)" />
+          <LineChart data={chartData} margin={MARGIN}>
+            <CartesianGrid vertical={false} stroke={GRID} />
             <XAxis
               dataKey="time"
               type="number"
               domain={['dataMin', 'dataMax']}
-              tickFormatter={(v: number) => `${v.toFixed(1)}s`}
-              stroke="#94a3b8"
-              fontSize={11}
-              label={{
-                value: 'Time (s)',
-                position: 'insideBottom',
-                offset: -5,
-                fontSize: 11,
-                fill: '#6a7b96',
-              }}
+              tickFormatter={(v: number) => `${Math.round(v)} s`}
+              {...AXIS}
             />
             <YAxis
-              stroke="#94a3b8"
-              fontSize={11}
-              label={{
-                value: yLabel,
-                angle: -90,
-                position: 'insideLeft',
-                offset: 10,
-                fontSize: 11,
-                fill: '#6a7b96',
-              }}
+              {...AXIS}
+              axisLine={false}
+              width={Y_AXIS_WIDTH}
+              tickFormatter={(v: number) => Number(v.toFixed(1)).toLocaleString()}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'rgba(255,255,255,0.85)',
-                backdropFilter: 'blur(12px)',
+                backgroundColor: 'rgba(255,255,255,0.95)',
                 boxShadow: '0 14px 34px -16px rgba(10,19,36,0.3)',
-                border: '1px solid rgba(255,255,255,0.8)',
+                border: '1px solid #e4e9f2',
                 borderRadius: '12px',
-                fontSize: '11px',
-                fontFamily: 'monospace',
+                fontSize: '14px',
+                color: INK_2,
               }}
               formatter={(value, name) => [
                 `${Number(value).toFixed(1)}${tooltipSuffix}`,
                 `${keyPrefix}${name}`,
               ]}
-              labelFormatter={(label) => `t = ${Number(label).toFixed(3)}s`}
-            />
-
-            <ReferenceLine
-              x={currentTime}
-              stroke="#1e63e9"
-              strokeWidth={1.5}
-              strokeDasharray="4 2"
+              labelFormatter={(label) => `${Number(label).toFixed(1)} s`}
             />
 
             {keys.map((key, i) => {
@@ -145,27 +162,23 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
       </div>
 
       {/* Custom scrollable legend */}
-      <div className="max-h-16 overflow-y-auto px-2 py-1.5 border-t border-ink/[0.06]">
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
+      <div className="max-h-24 overflow-y-auto px-4 py-3 border-t border-hairline">
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
           {keys.map((key, i) => {
             const isSelected = selectedKey === key
             return (
               <button
                 key={key}
                 onClick={() => onSelectKey(key)}
-                className={`flex items-center gap-1 text-[11px] font-mono cursor-pointer hover:opacity-80 ${
-                  isSelected ? 'font-bold' : ''
+                className={`flex items-center gap-2 text-base ${MOTION.colors} ${
+                  isSelected ? 'font-semibold text-ink' : 'text-ink-2 hover:text-ink'
                 }`}
               >
                 <span
-                  className="inline-block rounded"
-                  style={{
-                    backgroundColor: LINK_PALETTE[i % LINK_PALETTE.length],
-                    width: isSelected ? '14px' : '10px',
-                    height: isSelected ? '3px' : '2px',
-                  }}
+                  className="w-4 h-1 rounded-full"
+                  style={{ backgroundColor: LINK_PALETTE[i % LINK_PALETTE.length] }}
                 />
-                <span className={isSelected ? 'text-ink' : 'text-muted'}>
+                <span>
                   {keyPrefix}
                   {key}
                 </span>

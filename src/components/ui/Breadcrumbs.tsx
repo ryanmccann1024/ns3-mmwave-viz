@@ -5,26 +5,36 @@ export interface Crumb {
   onClick?: () => void
 }
 
-/** Where you are, and a click back to any level above it */
+/**
+ * Where you are, as one joined bar like the seed buttons: each level above is a large
+ * target back to it, and the last segment marks the current page
+ */
 export function Breadcrumbs({ items }: { items: Crumb[] }) {
   return (
-    <nav className="flex items-center gap-1.5 text-[13px] min-w-0">
+    <nav
+      aria-label="Breadcrumb"
+      className="self-start max-w-full min-w-0 flex rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-x divide-hairline"
+    >
       {items.map((c, i) => {
         const last = i === items.length - 1
-        return (
-          <span key={`${c.label}-${i}`} className="flex items-center gap-1.5 min-w-0">
-            {c.onClick && !last ? (
-              <button
-                type="button"
-                onClick={c.onClick}
-                className={`text-muted hover:text-accent-ink font-medium whitespace-nowrap ${MOTION.colors}`}
-              >
-                {c.label}
-              </button>
-            ) : (
-              <span className="text-ink-title font-semibold truncate">{c.label}</span>
-            )}
-            {!last && <span className="text-faint">/</span>}
+        return c.onClick && !last ? (
+          <button
+            key={`${c.label}-${i}`}
+            type="button"
+            onClick={c.onClick}
+            title={c.label}
+            className={`h-10 px-4 min-w-0 max-w-[16rem] truncate text-base font-medium text-ink-2 hover:bg-accent-wash hover:text-accent-ink ${MOTION.colors}`}
+          >
+            {c.label}
+          </button>
+        ) : (
+          <span
+            key={`${c.label}-${i}`}
+            aria-current={last ? 'page' : undefined}
+            title={c.label}
+            className={`h-10 leading-10 px-4 min-w-0 truncate text-base ${last ? 'max-w-[24rem] font-semibold text-ink bg-hairline/40' : 'max-w-[16rem] font-medium text-ink-2'}`}
+          >
+            {c.label}
           </span>
         )
       })}

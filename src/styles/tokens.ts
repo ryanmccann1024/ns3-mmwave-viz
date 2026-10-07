@@ -85,6 +85,7 @@ const ACTION_FALLBACK = ['#0d9488', '#d97706', '#7c3aed', '#0284c7']
 export const actionColor = (action: string, i: number) =>
   ACTION_COLORS[action] ?? ACTION_FALLBACK[i % ACTION_FALLBACK.length]
 
-// Reward components, in the order the reward schema lists them
-const COMPONENT_COLORS = ['#0d9488', '#7c3aed', '#d97706', '#0284c7']
+// Reward components, in the order the reward schema lists them (validated categorical order,
+// 6 slots, so a typical schema never repeats a hue)
+const COMPONENT_COLORS = ['#0d9488', '#7c3aed', '#d97706', '#0284c7', '#db2777', '#65a30d']
 export const componentColor = (i: number) => COMPONENT_COLORS[i % COMPONENT_COLORS.length]

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import type { MutableRefObject } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { SimFrame } from '../../types'
 import {
   useMetricSeries,
@@ -8,10 +9,13 @@ import {
 } from '../../hooks/useMetricSeries'
 import { MetricChart } from './MetricChart'
 import { Segmented } from '../ui/Segmented'
+import { MOTION } from '../../styles/motion'
 
 interface Props {
   frames: SimFrame[]
   frameIndex: number
+  /** 0..1 progress toward the next frame, advanced every animation frame */
+  frameAlphaRef?: MutableRefObject<number>
   selectedLink: string | null
   onSelectLink: (key: string) => void
   /** a preferred metric carried across compatible episodes; used only when this run has it */
@@ -22,6 +26,7 @@ interface Props {
 export function ChartsView({
   frames,
   frameIndex,
+  frameAlphaRef,
   selectedLink,
   onSelectLink,
   preferredMetric,
@@ -39,15 +44,20 @@ export function ChartsView({
   const setSelectedMetric = (metric: MetricId) => setChosenMetric(metric)
   const series = useMetricSeries(frames, selectedMetric)
   const config = METRICS.find((m) => m.id === selectedMetric)!
-  const currentTime = frames[frameIndex]?.time ?? 0
+  // Read by the chart every animation frame: the frame time plus how far toward the next one
+  const playheadTime = useCallback(() => {
+    const a = frames[frameIndex]?.time ?? 0
+    const b = frames[frameIndex + 1]?.time
+    const alpha = frameAlphaRef?.current ?? 0
+    return b === undefined ? a : a + (b - a) * alpha
+  }, [frames, frameIndex, frameAlphaRef])
 
   return (
     <div className="glass flex flex-col h-full overflow-hidden">
-      <div className="px-4 pt-3 pb-2 flex items-center gap-3 flex-shrink-0 min-w-0">
-        <h2 className="text-[13px] font-semibold text-ink-title flex-shrink-0">Metrics</h2>
+      <div className="px-5 pt-4 pb-3 flex flex-col gap-3 flex-shrink-0 min-w-0">
         <div className="overflow-x-auto min-w-0">
           <Segmented
-            size="sm"
+            size="lg"
             options={METRICS.map((m) => ({
               value: m.id,
               label: m.label,
@@ -57,12 +67,16 @@ export function ChartsView({
             onChange={setSelectedMetric}
           />
         </div>
+        <h2 className="text-xl font-semibold tracking-tight text-ink-title">
+          {config.label}
+          {config.unit && <span className="font-medium text-ink-2"> ({config.unit})</span>}
+        </h2>
       </div>
-      <div className="flex-1 min-h-0 px-2 pb-2">
+      <div key={selectedMetric} className={`flex-1 min-h-0 ${MOTION.enterFade}`}>
         <MetricChart
           series={series}
           config={config}
-          currentTime={currentTime}
+          playheadTime={playheadTime}
           selectedKey={selectedLink}
           onSelectKey={onSelectLink}
         />

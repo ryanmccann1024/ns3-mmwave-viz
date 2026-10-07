@@ -1,9 +1,11 @@
+import { MOTION } from '../../styles/motion'
 import { useState } from 'react'
 import type { ResultCatalog } from '../../lib/resultCatalog'
 import type { TrainingEpisode, TrainingRun } from '../../lib/trainingRun'
 import { folderLabel, runTimeLabel, shortNumber } from '../../lib/format'
 import { useTrainingRun } from '../../hooks/useRlData'
 import { PageHeader } from '../ui/PageHeader'
+import type { Crumb } from '../ui/Breadcrumbs'
 import { Panel } from '../ui/Panel'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
@@ -16,6 +18,8 @@ interface Props {
   root: string
   onHome: () => void
   onExperiments: () => void
+  /** the experiment that evaluated this run's model, between RL experiments and this page */
+  groupCrumbs?: Crumb[]
   onPlay: (run: TrainingRun, episode: TrainingEpisode) => void
   openError: string | null
 }
@@ -169,6 +173,7 @@ export function TrainingRunPage({
   root,
   onHome,
   onExperiments,
+  groupCrumbs = [],
   onPlay,
   openError,
 }: Props) {
@@ -185,6 +190,7 @@ export function TrainingRunPage({
         parents={[
           { label: 'Home', onClick: onHome },
           { label: 'RL experiments', onClick: onExperiments },
+          ...groupCrumbs,
         ]}
         title={trainingRunTitle(root)}
         subtitle={
@@ -196,7 +202,7 @@ export function TrainingRunPage({
         }
         actions={
           latest && run ? (
-            <Button variant="primary" onClick={() => onPlay(run, latest)}>
+            <Button variant="secondary" onClick={() => onPlay(run, latest)}>
               Watch the last episode in 3D
             </Button>
           ) : undefined
@@ -223,9 +229,11 @@ export function TrainingRunPage({
               onChange={setTab}
             />
           </div>
-          {tab === 'learning' && <TrainingInsights run={run} />}
-          {tab === 'episodes' && <EpisodeTable run={run} onPlay={(e) => onPlay(run, e)} />}
-          {tab === 'details' && <Details run={run} />}
+          <div key={tab} className={MOTION.enter}>
+            {tab === 'learning' && <TrainingInsights run={run} />}
+            {tab === 'episodes' && <EpisodeTable run={run} onPlay={(e) => onPlay(run, e)} />}
+            {tab === 'details' && <Details run={run} />}
+          </div>
         </>
       )}
     </div>

@@ -3,6 +3,7 @@ import type { SimFrame, BuildingState, SimMeta, JammerState } from '../../types'
 import type { SceneBounds } from '../../hooks/useSimData'
 import { Scene } from './Scene'
 import type { Trail } from './TrajectoryLayer'
+import type { BaselinePlan } from '../../lib/baselineManifest'
 import { getScenarioTheme } from '../../styles/scenarioThemes'
 
 interface Props {
@@ -22,6 +23,8 @@ interface Props {
   onSelectLink: (key: string | null) => void
   dimensions?: 1 | 2 | 3
   trails?: Trail[]
+  replayPolicy?: string
+  placementPlan?: BaselinePlan | null
 }
 
 export function NetworkCanvas({
@@ -40,6 +43,8 @@ export function NetworkCanvas({
   onSelectLink,
   dimensions = 3,
   trails,
+  replayPolicy,
+  placementPlan,
 }: Props) {
   const scenario = meta?.scenario ?? ''
   const theme = getScenarioTheme(scenario)
@@ -71,6 +76,8 @@ export function NetworkCanvas({
         rainRate={meta?.rainRate ?? 0}
         scenario={scenario}
         trails={trails}
+        replayPolicy={replayPolicy}
+        placementPlan={placementPlan}
       />
     </Canvas>
   )

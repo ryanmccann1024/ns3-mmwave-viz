@@ -7,9 +7,11 @@ import { Note } from '../ExperimentStatus'
 
 function Tile({ value, label }: { value: string; label: string }) {
   return (
-    <div className="tile px-4 py-3 min-w-[8.5rem]">
-      <div className="text-2xl font-semibold tabular-nums tracking-tight text-ink">{value}</div>
-      <div className="text-sm text-muted">{label}</div>
+    <div className="glass p-6 min-w-0">
+      <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight text-ink-title truncate">
+        {value}
+      </div>
+      <div className="mt-1 text-base font-medium text-ink-2">{label}</div>
     </div>
   )
 }
@@ -65,8 +67,8 @@ export function TrainingInsights({ run }: { run: TrainingRun }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex gap-2 flex-wrap">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
         <Tile value={String(counted.length)} label="Training episodes" />
         <Tile
           value={run.totalTimesteps !== null ? run.totalTimesteps.toLocaleString() : 'n/a'}
@@ -74,7 +76,7 @@ export function TrainingInsights({ run }: { run: TrainingRun }) {
         />
         <Tile
           value={change === null ? 'n/a' : `${change >= 0 ? '+' : ''}${shortNumber(change)}`}
-          label={`Return, last vs first ${window} episodes`}
+          label="Return gain"
         />
         <Tile
           value={shortNumber(bestCheckpoint ?? run.bestMeanReward)}
@@ -88,7 +90,7 @@ export function TrainingInsights({ run }: { run: TrainingRun }) {
         {run.checkpoints && run.checkpoints.length > 0 ? (
           <CheckpointChart checkpoints={run.checkpoints} evalSeed={run.evalSeed} />
         ) : (
-          <div className="glass p-4 text-sm text-muted">
+          <div className="glass p-6 text-base text-ink-2">
             {run.checkpointsError ??
               'No evaluations.npz was saved for this run, so there are no periodic evaluations.'}
           </div>
@@ -96,11 +98,6 @@ export function TrainingInsights({ run }: { run: TrainingRun }) {
         {components.length > 0 && (
           <ComponentTrendChart data={componentData} components={components} window={window} />
         )}
-      </div>
-      <div className="text-[11px] text-muted">
-        This chart shows training seed {run.seed ?? 'unknown'} only. Shading is episode-to-episode
-        variation within this model, not variation across independent models; switch training seeds
-        in the experiment to inspect the others.
       </div>
     </div>
   )

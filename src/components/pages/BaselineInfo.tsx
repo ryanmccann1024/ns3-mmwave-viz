@@ -84,7 +84,7 @@ export function BaselineBadges({
 export function BaselineSetupLine({
   initialDisplacementMTotal,
   plannerWallS,
-  className = 'text-[11px] text-muted',
+  className = 'text-sm text-ink-2',
 }: {
   initialDisplacementMTotal: number | null
   plannerWallS: number | null
@@ -108,7 +108,7 @@ const unknown = (v: string | number | null | undefined) =>
 function HashRow({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div className="flex justify-between items-center gap-4 py-2 border-b border-ink/[0.06] last:border-0">
-      <span className="text-muted text-sm">{label}</span>
+      <span className="text-ink-2 text-sm">{label}</span>
       {value ? (
         <span className="text-ink text-sm font-mono tabular-nums text-right" title={value}>
           {value.length > 12 ? `${value.slice(0, 12)}…` : value}
@@ -121,12 +121,12 @@ function HashRow({ label, value }: { label: string; value: string | null | undef
 }
 
 function SubHead({ children }: { children: ReactNode }) {
-  return <div className="text-[11px] font-semibold text-muted mt-3 mb-0.5">{children}</div>
+  return <div className="text-sm font-semibold text-ink-2 mt-3 mb-0.5">{children}</div>
 }
 
 function Warning({ children }: { children: ReactNode }) {
   return (
-    <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-2 break-words">
+    <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-2 break-words">
       {children}
     </div>
   )
@@ -150,23 +150,28 @@ const PREVIEW_W = 240
 const PREVIEW_H = 160
 const PREVIEW_PAD = 14
 
-/** Selected plan nodes' original and planned XY positions, from baseline-plan.json only */
-function PlanPreview({ plan }: { plan: BaselinePlan }) {
+/** Original and planned XY positions, from baseline-plan.json only. */
+export function PlanPreview({ plan }: { plan: BaselinePlan }) {
   const items = plan.nodes
-    .filter((n) => n.selected)
-    .map((n) => ({ id: n.id, from: finitePoint(n.original), to: finitePoint(n.planned) }))
-    .filter((n): n is { id: string; from: Pt; to: Pt } => n.from !== null && n.to !== null)
+    .map((n) => ({
+      id: n.id,
+      selected: n.selected,
+      from: finitePoint(n.original),
+      to: finitePoint(n.planned),
+    }))
+    .filter(
+      (n): n is { id: string; selected: boolean; from: Pt; to: Pt } =>
+        n.from !== null && n.to !== null
+    )
 
   const caption = (
-    <div className="text-[11px] text-muted mt-1">
-      Pre-run placement setup from baseline-plan.json — not simulated movement
-    </div>
+    <div className="text-sm text-ink-2 mt-1">Before → planned · setup, not replay motion</div>
   )
   if (items.length === 0) {
     return (
       <div className="mt-2">
-        <div className="text-xs text-muted">
-          No selected plan node has both an original and a planned position.
+        <div className="text-sm text-ink-2">
+          No plan node has both an original and a planned position.
         </div>
         {caption}
       </div>
@@ -197,8 +202,8 @@ function PlanPreview({ plan }: { plan: BaselinePlan }) {
         height={PREVIEW_H}
         viewBox={`0 0 ${PREVIEW_W} ${PREVIEW_H}`}
         role="img"
-        aria-label="Original and planned positions of selected nodes"
-        className="rounded-lg border border-hairline bg-white/70"
+        aria-label="Original and planned positions of baseline nodes"
+        className="h-auto max-w-full rounded-lg border border-hairline bg-white/70"
       >
         {items.map((n) => (
           <g key={n.id}>
@@ -207,24 +212,29 @@ function PlanPreview({ plan }: { plan: BaselinePlan }) {
               y1={py(n.from.y)}
               x2={px(n.to.x)}
               y2={py(n.to.y)}
-              className="stroke-muted"
+              className={n.selected ? 'stroke-accent' : 'stroke-muted/40'}
               strokeWidth={1}
             />
             <circle
               cx={px(n.from.x)}
               cy={py(n.from.y)}
               r={3}
-              className="fill-white stroke-muted"
+              className={n.selected ? 'fill-white stroke-accent' : 'fill-white stroke-muted'}
               strokeWidth={1.2}
             />
-            <circle cx={px(n.to.x)} cy={py(n.to.y)} r={3.2} className="fill-accent" />
+            <circle
+              cx={px(n.to.x)}
+              cy={py(n.to.y)}
+              r={3.2}
+              className={n.selected ? 'fill-accent' : 'fill-muted'}
+            />
             <text x={px(n.to.x) + 5} y={py(n.to.y) - 4} className="fill-ink-2" fontSize={9}>
               {n.id}
             </text>
           </g>
         ))}
       </svg>
-      <div className="text-[11px] text-muted mt-1">Open dot: original · filled dot: planned</div>
+      <div className="text-sm text-ink-2 mt-1">○ original · ● planned · blue: planner-selected</div>
       {caption}
     </div>
   )
@@ -338,20 +348,16 @@ export function BaselineProvenance({
         )}
 
         {m?.error && (
-          <div className="text-xs text-muted mt-2 break-words">
+          <div className="text-sm text-ink-2 mt-2 break-words">
             <span className="font-medium text-ink-2">Recorded error: </span>
             {truncateText(m.error, 300)}
           </div>
         )}
         {diagnostic && (
-          <div className="text-xs text-muted mt-2 break-words">
+          <div className="text-sm text-ink-2 mt-2 break-words">
             <span className="font-medium text-ink-2">Manifest diagnostic: </span>
             {truncateText(diagnostic, 200)}
           </div>
-        )}
-
-        {plan !== undefined && plan !== 'loading' && plan !== 'unavailable' && (
-          <PlanPreview plan={plan} />
         )}
       </div>
     </Disclosure>

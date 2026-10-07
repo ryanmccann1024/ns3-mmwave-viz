@@ -1,4 +1,6 @@
+import { useRef } from 'react'
 import * as THREE from 'three'
+import { useFrame } from '@react-three/fiber'
 import { Text, Line } from '@react-three/drei'
 import type { NodeState } from '../../types'
 import {
@@ -9,7 +11,7 @@ import {
   NODE_COLOR_DIMMED,
   NODE_COLOR_SELECTED,
 } from '../../styles/tokens'
-import { simToThree, headingRotation } from './utils/coordinates'
+import { simToThree, headingRotation, lerpNodeToThree } from './utils/coordinates'
 import { NodeShape } from './NodeShape'
 
 interface Props {
@@ -28,7 +30,7 @@ interface Props {
 export function NodeObject({
   node,
   nextNode,
-  alphaRef: _alphaRef,
+  alphaRef,
   selected,
   highlighted,
   dimmed,
@@ -65,8 +67,19 @@ export function NodeObject({
   const label = NODE_LABELS[node.nodeType]
   const position = simToThree(node.x, node.y, node.z, dim, posScale)
 
+  // Saved frames can be seconds apart: glide toward the next frame every animation frame,
+  // imperatively, so the replay moves smoothly without re-rendering React
+  const groupRef = useRef<THREE.Group>(null)
+  useFrame(() => {
+    const g = groupRef.current
+    if (!g) return
+    const [x, y, z] = lerpNodeToThree(node, nextNode, alphaRef.current, dim, posScale)
+    g.position.set(x, y, z)
+  })
+
   return (
     <group
+      ref={groupRef}
       position={position}
       onClick={(e) => {
         e.stopPropagation()

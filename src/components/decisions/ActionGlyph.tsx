@@ -24,7 +24,7 @@ export function ActionGlyph({
 }: Props) {
   const name = meaning ?? `action ${index}`
   const letter = (meaning ?? '?').trim().charAt(0).toUpperCase() || '?'
-  const box = size === 'sm' ? 'w-4 h-4 text-[9px]' : 'w-6 h-6 text-[11px]'
+  const box = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-8 h-8 text-sm'
   const text = `${label ? `${label}: ` : ''}${name}${revalidated ? ' (revalidated)' : ''}${
     allowed ? '' : ' (masked out)'
   }`
@@ -44,7 +44,7 @@ export function ActionGlyph({
         {letter}
       </span>
       {revalidated && (
-        <span className="absolute -top-1 -right-1 rounded-full bg-ink text-white text-[8px] leading-[10px] px-[3px] font-bold">
+        <span className="absolute -top-1 -right-1 rounded-full bg-ink text-white text-[10px] leading-3 px-1 font-bold">
           R
         </span>
       )}

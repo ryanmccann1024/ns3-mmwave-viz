@@ -1,8 +1,6 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   Area,
-  Bar,
-  BarChart,
   CartesianGrid,
   ComposedChart,
   Line,
@@ -16,58 +14,85 @@ import { shortNumber } from '../../lib/format'
 import type { DecisionBandPoint, RollingPoint } from '../../lib/rlStats'
 import type { EvalCheckpoint } from '../../lib/trainingRun'
 import { actionColor, componentColor, trailColor } from '../../styles/tokens'
+import { policyLabel } from '../../lib/rlLabels'
 
-// Shared chart grammar: recessive grid and axes, ink text, series colour only on marks
-const AXIS = { fontSize: 12, stroke: '#6a7b96', tickLine: false } as const
-const GRID = 'rgba(10,19,36,0.07)'
+import { AXIS, AXIS_LABEL, GRID } from './chartStyle'
+
+/** delivery_ratio -> Delivery ratio, for legends */
+const words = (key: string) => {
+  const s = key
+    .replace(/_+/g, ' ')
+    .trim()
+    .replace(/\b(sinr|snr|los|nlos|mcs)\b/gi, (w) => w.toUpperCase())
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/** Round ticks across [min, max] (1, 2 or 5 times a power of ten), always including 0 */
+function niceTicks(min: number, max: number): number[] {
+  const raw = (max - min || 1) / 4
+  const p = 10 ** Math.floor(Math.log10(raw))
+  const f = raw / p
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p
+  const ticks: number[] = []
+  for (let t = Math.ceil(min / step) * step; t <= max + 1e-9; t += step) {
+    ticks.push(Number(t.toPrecision(12)))
+  }
+  return ticks
+}
+
+/** Axis ticks: at most two decimals, no trailing zeros, thousands separated */
+const tickNumber = (v: number) =>
+  Number.isFinite(v) ? Number(v.toFixed(Math.abs(v) >= 100 ? 0 : 2)).toLocaleString() : ''
 
 export function ChartCard({
   title,
   subtitle,
   legend,
   children,
-  height = 'h-56',
+  height = 'h-64',
 }: {
   title: string
+  /** one plain sentence on what the chart shows */
   subtitle?: ReactNode
   legend?: { label: string; color: string; dashed?: boolean; band?: boolean }[]
   children: ReactNode
   height?: string
 }) {
   return (
-    <section className="glass p-5 flex flex-col gap-3 min-w-0">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <h3 className="text-base font-semibold text-ink-title">{title}</h3>
-          {subtitle && (
-            <details className="text-sm text-muted mt-1">
-              <summary className="cursor-pointer hover:text-ink">What this shows</summary>
-              <div className="pt-2 leading-relaxed">{subtitle}</div>
-            </details>
-          )}
-        </div>
-        {legend && legend.length > 0 && (
-          <div className="flex items-center gap-3 flex-wrap">
-            {legend.map((l) => (
-              <span key={l.label} className="flex items-center gap-1.5 text-sm text-ink-2">
-                {l.band ? (
-                  <span
-                    className="w-3.5 h-2.5 rounded-sm"
-                    style={{ backgroundColor: l.color, opacity: 0.25 }}
-                  />
-                ) : l.dashed ? (
-                  <span className="w-4 border-t-2 border-dashed" style={{ borderColor: l.color }} />
-                ) : (
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} />
-                )}
-                {l.label}
-              </span>
-            ))}
-          </div>
-        )}
+    <section className="glass p-6 flex flex-col gap-4 min-w-0">
+      <div className="flex flex-col gap-1.5">
+        <h3 className="text-xl font-semibold tracking-tight text-ink-title">{title}</h3>
+        {subtitle && <p className="text-base text-ink-2 leading-relaxed">{subtitle}</p>}
       </div>
+      {legend && legend.length > 0 && <Legend items={legend} />}
       <div className={height}>{children}</div>
     </section>
+  )
+}
+
+export function Legend({
+  items,
+}: {
+  items: { label: string; color: string; dashed?: boolean; band?: boolean }[]
+}) {
+  return (
+    <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
+      {items.map((l) => (
+        <span key={l.label} className="flex items-center gap-2 text-base text-ink-2">
+          {l.band ? (
+            <span
+              className="w-4 h-3 rounded-sm"
+              style={{ backgroundColor: l.color, opacity: 0.25 }}
+            />
+          ) : l.dashed ? (
+            <span className="w-4 border-t-2 border-dashed" style={{ borderColor: l.color }} />
+          ) : (
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: l.color }} />
+          )}
+          {l.label}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -93,7 +118,7 @@ export function LearningCurveChart({ points, window }: { points: RollingPoint[];
   return (
     <ChartCard
       title="Reward per training episode"
-      subtitle={`Dots are single episodes. The line is a ${window}-episode rolling mean; the shading is ±1 standard deviation over that window.`}
+      subtitle={`Each dot is one episode. The line is a ${window}-episode rolling mean, shaded ±1 standard deviation.`}
       legend={[
         { label: 'Episode return', color },
         { label: 'Spread', color, band: true },
@@ -112,16 +137,15 @@ export function LearningCurveChart({ points, window }: { points: RollingPoint[];
               value: 'Training episode',
               position: 'insideBottom',
               offset: -8,
-              fontSize: 11,
-              fill: '#6a7b96',
+              ...AXIS_LABEL,
             }}
           />
           <YAxis
             {...AXIS}
             axisLine={false}
-            width={48}
+            width={60}
             domain={['auto', 'auto']}
-            tickFormatter={shortNumber}
+            tickFormatter={tickNumber}
           />
           <Tooltip
             content={({ active, payload }) => {
@@ -185,7 +209,7 @@ export function CheckpointChart({
   return (
     <ChartCard
       title="Checkpoint tests on the model-selection seed"
-      subtitle={`Training pauses at each checkpoint and tests the current policy${evalSeed !== null ? ` on seed ${evalSeed}` : ''}. This seed selects the saved best model; it is not the training seed or a held-out test. Shading spans the tested episodes.`}
+      subtitle={`At each checkpoint the current policy is tested${evalSeed !== null ? ` on seed ${evalSeed}` : ''}; the best one is saved. Shading spans the tested episodes.`}
       legend={[{ label: 'Mean return', color }]}
     >
       <ResponsiveContainer width="100%" height="100%">
@@ -200,16 +224,15 @@ export function CheckpointChart({
               value: 'Timesteps',
               position: 'insideBottom',
               offset: -8,
-              fontSize: 11,
-              fill: '#6a7b96',
+              ...AXIS_LABEL,
             }}
           />
           <YAxis
             {...AXIS}
             axisLine={false}
-            width={48}
+            width={60}
             domain={['auto', 'auto']}
-            tickFormatter={shortNumber}
+            tickFormatter={tickNumber}
           />
           <Tooltip
             content={({ active, payload }) => {
@@ -266,7 +289,7 @@ export function ComponentTrendChart({
     <ChartCard
       title="What the reward was made of, over training"
       subtitle={`Each component's episode total, ${window}-episode rolling mean.`}
-      legend={components.map((c, i) => ({ label: c, color: componentColor(i) }))}
+      legend={components.map((c, i) => ({ label: words(c), color: componentColor(i) }))}
     >
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 16, left: 4 }}>
@@ -280,16 +303,15 @@ export function ComponentTrendChart({
               value: 'Training episode',
               position: 'insideBottom',
               offset: -8,
-              fontSize: 11,
-              fill: '#6a7b96',
+              ...AXIS_LABEL,
             }}
           />
           <YAxis
             {...AXIS}
             axisLine={false}
-            width={48}
+            width={60}
             domain={['auto', 'auto']}
-            tickFormatter={shortNumber}
+            tickFormatter={tickNumber}
           />
           <Tooltip
             content={({ active, payload }) => {
@@ -350,8 +372,7 @@ export function RewardByDecisionChart({
   return (
     <ChartCard
       title="Reward through one evaluation episode"
-      subtitle="Each point is the mean per-tick reward over the preceding simulator window, plotted at the decision that closes that window. Lines average that value across evaluation seeds; shading shows their range."
-      legend={series.map((s) => ({ label: s.policy, color: trailColor(s.policy) }))}
+      legend={series.map((s) => ({ label: policyLabel(s.policy), color: trailColor(s.policy) }))}
     >
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 16, left: 4 }}>
@@ -366,23 +387,15 @@ export function RewardByDecisionChart({
               value: 'Decision',
               position: 'insideBottom',
               offset: -8,
-              fontSize: 11,
-              fill: '#6a7b96',
+              ...AXIS_LABEL,
             }}
           />
           <YAxis
             {...AXIS}
             axisLine={false}
-            width={48}
+            width={60}
             domain={['auto', 'auto']}
-            tickFormatter={shortNumber}
-            label={{
-              value: 'Mean reward per simulator tick',
-              angle: -90,
-              position: 'insideLeft',
-              fontSize: 11,
-              fill: '#6a7b96',
-            }}
+            tickFormatter={tickNumber}
           />
           <Tooltip
             content={({ active, payload, label }) => {
@@ -399,7 +412,7 @@ export function RewardByDecisionChart({
                       <TipRow
                         key={s.policy}
                         color={trailColor(s.policy)}
-                        label={s.policy}
+                        label={policyLabel(s.policy)}
                         value={`${shortNumber(m)} (${shortNumber(r[0])} to ${shortNumber(r[1])})`}
                       />
                     )
@@ -435,74 +448,120 @@ export function RewardByDecisionChart({
 }
 
 // ---------------------------------------------------------------------------
-// Horizontal 100%/stacked bars, one per policy
+// Stacked bars, one row per policy, drawn as plain aligned rows
 // ---------------------------------------------------------------------------
 
-function StackedPolicyBars({
+/**
+ * One row per policy: name, a stacked bar on a shared scale, and the row total. Negative
+ * parts stack left of a shared zero line and positive parts right of it, so every row reads
+ * against the same baseline. Hovering a segment names it and its value.
+ */
+function StackedRows({
   rows,
   keys,
   colorOf,
   format,
   percent,
+  totalLabel,
 }: {
-  rows: Record<string, number | string>[]
+  rows: { policy: string; values: Record<string, number> }[]
   keys: string[]
   colorOf: (key: string, i: number) => string
   format: (v: number) => string
   percent?: boolean
+  totalLabel?: string
 }) {
+  const [hover, setHover] = useState<{ policy: string; key: string } | null>(null)
+  const sums = rows.map((r) => {
+    let neg = 0
+    let pos = 0
+    for (const k of keys) {
+      const v = r.values[k] ?? 0
+      if (v < 0) neg += v
+      else pos += v
+    }
+    return { neg, pos }
+  })
+  const min = percent ? 0 : Math.min(0, ...sums.map((x) => x.neg))
+  const max = percent ? 1 : Math.max(0, ...sums.map((x) => x.pos))
+  const span = max - min || 1
+  const at = (v: number) => ((v - min) / span) * 100
+  const hovered = hover ? rows.find((r) => r.policy === hover.policy) : null
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart
-        data={rows}
-        layout="vertical"
-        margin={{ top: 4, right: 16, bottom: 4, left: 4 }}
-        barCategoryGap={10}
-      >
-        <CartesianGrid horizontal={false} stroke={GRID} />
-        <XAxis
-          type="number"
-          {...AXIS}
-          domain={percent ? [0, 1] : [0, 'auto']}
-          tickFormatter={(v: number) => (percent ? `${Math.round(v * 100)}%` : shortNumber(v))}
-        />
-        <YAxis type="category" dataKey="policy" {...AXIS} axisLine={false} width={96} />
-        <Tooltip
-          cursor={{ fill: 'rgba(10,19,36,0.04)' }}
-          content={({ active, payload }) => {
-            const row = active
-              ? (payload?.[0]?.payload as Record<string, number | string> | undefined)
-              : undefined
-            if (!row) return null
-            return (
-              <TooltipBox>
-                <div className="font-medium text-ink">{row.policy}</div>
-                {keys.map((k, i) => (
-                  <TipRow
+    <div className="flex flex-col gap-3">
+      {rows.map((row) => {
+        let negEdge = 0
+        let posEdge = 0
+        const total = keys.reduce((acc, k) => acc + (row.values[k] ?? 0), 0)
+        return (
+          <div key={row.policy} className="grid grid-cols-[11rem_1fr_4.5rem] items-center gap-4">
+            <span className="flex items-center gap-2 min-w-0 text-base font-medium text-ink">
+              <span
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: trailColor(row.policy) }}
+              />
+              <span className="truncate">{policyLabel(row.policy)}</span>
+            </span>
+            <div className="relative h-6 rounded-md bg-ink/[0.04]">
+              {!percent && min < 0 && (
+                <div
+                  className="absolute -top-1 -bottom-1 w-px bg-ink/25"
+                  style={{ left: `${at(0)}%` }}
+                />
+              )}
+              {keys.map((k, i) => {
+                const v = row.values[k] ?? 0
+                if (v === 0) return null
+                const from = v < 0 ? negEdge + v : posEdge
+                if (v < 0) negEdge += v
+                else posEdge += v
+                const left = at(from)
+                const width = at(from + Math.abs(v)) - left
+                const active = hover?.policy === row.policy && hover.key === k
+                return (
+                  <div
                     key={k}
-                    color={colorOf(k, i)}
-                    label={k}
-                    value={format(Number(row[k] ?? 0))}
+                    onMouseEnter={() => setHover({ policy: row.policy, key: k })}
+                    onMouseLeave={() => setHover(null)}
+                    className="absolute top-0 bottom-0 border-x border-white"
+                    style={{
+                      left: `${left}%`,
+                      width: `${width}%`,
+                      backgroundColor: colorOf(k, i),
+                      opacity: hover && !active ? 0.55 : 1,
+                    }}
                   />
-                ))}
-              </TooltipBox>
-            )
-          }}
-        />
-        {keys.map((k, i) => (
-          <Bar
-            key={k}
-            dataKey={k}
-            stackId="s"
-            fill={colorOf(k, i)}
-            stroke="#ffffff"
-            strokeWidth={2}
-            isAnimationActive={false}
-            radius={i === keys.length - 1 ? [0, 4, 4, 0] : 0}
-          />
-        ))}
-      </BarChart>
-    </ResponsiveContainer>
+                )
+              })}
+            </div>
+            <span className="text-right text-base font-medium text-ink tabular-nums">
+              {percent ? '' : format(total)}
+            </span>
+          </div>
+        )
+      })}
+      <div className="grid grid-cols-[11rem_1fr_4.5rem] gap-4 text-sm text-ink-2 tabular-nums">
+        <span />
+        <div className="relative h-5">
+          {(percent ? [0, 0.25, 0.5, 0.75, 1] : niceTicks(min, max)).map((t, i, all) => (
+            <span
+              key={`${t}-${i}`}
+              className={`absolute ${i === 0 ? '' : i === all.length - 1 ? '-translate-x-full' : '-translate-x-1/2'}`}
+              style={{ left: `${at(t)}%` }}
+            >
+              {percent ? format(t) : tickNumber(t)}
+            </span>
+          ))}
+        </div>
+        <span className="text-right">{totalLabel ?? ''}</span>
+      </div>
+      <div className="min-h-6 text-base text-ink-2" aria-live="polite">
+        {hover && hovered
+          ? `${policyLabel(hovered.policy)} · ${words(hover.key)}: ${format(hovered.values[hover.key] ?? 0)}`
+          : '\u00a0'}
+      </div>
+    </div>
   )
 }
 
@@ -516,15 +575,14 @@ export function ActionShareChart({
   return (
     <ChartCard
       title="What each policy chose"
-      subtitle="Share of all moves sent to the controlled nodes, across every seed."
-      legend={actions.map((a, i) => ({ label: a, color: actionColor(a, i) }))}
-      height={rows.length > 3 ? 'h-56' : 'h-44'}
+      legend={actions.map((a, i) => ({ label: words(a), color: actionColor(a, i) }))}
+      height=""
     >
-      <StackedPolicyBars
-        rows={rows.map((r) => ({ policy: r.policy, ...r.shares }))}
+      <StackedRows
+        rows={rows.map((r) => ({ policy: r.policy, values: r.shares }))}
         keys={actions}
         colorOf={actionColor}
-        format={(v) => `${(v * 100).toFixed(0)}%`}
+        format={(v) => `${Math.round(v * 100)}%`}
         percent
       />
     </ChartCard>
@@ -541,15 +599,15 @@ export function RewardSourceChart({
   return (
     <ChartCard
       title="Where the reward came from"
-      subtitle="Mean episode total of each weighted reward component; bars add up to the mean return."
-      legend={components.map((c, i) => ({ label: c, color: componentColor(i) }))}
-      height={rows.length > 3 ? 'h-56' : 'h-44'}
+      legend={components.map((c, i) => ({ label: words(c), color: componentColor(i) }))}
+      height=""
     >
-      <StackedPolicyBars
-        rows={rows.map((r) => ({ policy: r.policy, ...r.contributions }))}
+      <StackedRows
+        rows={rows.map((r) => ({ policy: r.policy, values: r.contributions }))}
         keys={components}
         colorOf={(_, i) => componentColor(i)}
-        format={shortNumber}
+        format={(v) => (Math.abs(v) >= 10 ? Math.round(v).toLocaleString() : shortNumber(v))}
+        totalLabel="Return"
       />
     </ChartCard>
   )

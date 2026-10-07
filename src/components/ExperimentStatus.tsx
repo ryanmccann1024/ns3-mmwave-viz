@@ -1,17 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ArtifactState, Experiment, FetchSnapshot } from '../lib/experimentIndex'
-import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { MOTION } from '../styles/motion'
-
-const STATE_CLASSES: Record<ArtifactState, string> = {
-  ok: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-  incomplete: 'bg-amber-100 text-amber-800 border border-amber-200',
-  failed: 'bg-rose-100 text-rose-800 border border-rose-200',
-  missing: 'bg-gray-100 text-ink-2 border border-gray-300',
-  not_fetched: 'bg-violet-100 text-violet-800 border border-violet-200',
-}
 
 const STATE_LABELS: Record<ArtifactState, string> = {
   ok: 'ok',
@@ -21,8 +12,16 @@ const STATE_LABELS: Record<ArtifactState, string> = {
   not_fetched: 'not fetched',
 }
 
+/** The state as plain coloured text, not a pill: quiet when ok, amber or red when not */
 export function StateBadge({ state }: { state: ArtifactState }) {
-  return <Badge label={STATE_LABELS[state]} colorClass={STATE_CLASSES[state]} />
+  const label = STATE_LABELS[state]
+  const tone =
+    state === 'failed' ? 'text-rose-700' : state === 'ok' ? 'text-ink-2' : 'text-amber-800'
+  return (
+    <span className={`text-base font-medium ${tone}`}>
+      {label.charAt(0).toUpperCase() + label.slice(1)}
+    </span>
+  )
 }
 
 export function Section({
@@ -35,9 +34,9 @@ export function Section({
   children: ReactNode
 }) {
   return (
-    <section className="glass p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-base font-semibold text-ink-title">{title}</h2>
+    <section className="glass p-6 flex flex-col gap-4 min-w-0">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <h2 className="text-xl font-semibold tracking-tight text-ink-title">{title}</h2>
         {aside}
       </div>
       {children}
@@ -60,7 +59,7 @@ export function Note({
         : 'bg-white/60 border-hairline text-ink-2'
   return (
     <div
-      className={`text-sm leading-relaxed border rounded-lg px-3.5 py-2.5 break-words ${cls} ${tone === 'error' ? MOTION.enter : MOTION.enterFade}`}
+      className={`text-base leading-relaxed border rounded-xl px-4 py-3 break-words ${cls} ${tone === 'error' ? MOTION.enter : MOTION.enterFade}`}
     >
       {children}
     </div>
@@ -128,25 +127,24 @@ export function ExperimentStatus({ experiment }: { experiment: Experiment }) {
 
   return (
     <Section title="Artifacts and status">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col divide-y divide-hairline border-t border-hairline">
         {topLevel.map((a) => (
-          <div key={a.path} className="flex items-start gap-2 text-xs">
-            <Badge
-              label={a.usable ? 'read' : 'not usable'}
-              colorClass={
-                a.usable
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-100 text-rose-800 border border-rose-200'
-              }
-            />
-            <div className="min-w-0">
-              <div className="text-ink-2 break-all">{a.path}</div>
-              {a.message && <div className="text-rose-700 break-words">{a.message}</div>}
+          <div key={a.path} className="py-3 flex items-start gap-4 text-base">
+            <div className="flex-1 min-w-0">
+              <div className="text-ink font-mono text-sm break-all">{a.path}</div>
+              {a.message && <div className="text-rose-700 break-words mt-1">{a.message}</div>}
             </div>
+            <span
+              className={`flex-shrink-0 font-medium ${a.usable ? 'text-ink-2' : 'text-rose-700'}`}
+            >
+              {a.usable ? 'Read' : 'Not usable'}
+            </span>
           </div>
         ))}
         {topLevel.length === 0 && (
-          <div className="text-xs text-muted">No plan, comparison or fetch manifest found.</div>
+          <div className="py-3 text-base text-ink-2">
+            No plan, comparison or fetch manifest found.
+          </div>
         )}
       </div>
 

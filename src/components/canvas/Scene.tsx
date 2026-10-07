@@ -12,6 +12,8 @@ import { TrafficLayer } from './TrafficLayer'
 import { TrajectoryLayer } from './TrajectoryLayer'
 import { JammerObject } from './JammerObject'
 import type { Trail } from './TrajectoryLayer'
+import type { BaselinePlan } from '../../lib/baselineManifest'
+import { PlacementLayer } from './PlacementLayer'
 
 interface Props {
   frame: SimFrame
@@ -32,6 +34,8 @@ interface Props {
   rainRate: number
   scenario: string
   trails?: Trail[]
+  replayPolicy?: string
+  placementPlan?: BaselinePlan | null
 }
 
 export function Scene({
@@ -52,6 +56,8 @@ export function Scene({
   rainRate,
   scenario,
   trails,
+  replayPolicy,
+  placementPlan,
 }: Props) {
   const { nodes, links } = frame
 
@@ -227,10 +233,15 @@ export function Scene({
       {trails && trails.length > 0 && (
         <TrajectoryLayer
           trails={trails}
+          replayPolicy={replayPolicy}
           dim={dimensions}
           posScale={compactFactor}
           time={frame.time}
         />
+      )}
+
+      {placementPlan && (
+        <PlacementLayer plan={placementPlan} dimensions={dimensions} posScale={compactFactor} />
       )}
 
       {/* Nodes */}

@@ -1,3 +1,4 @@
+import { MOTION } from '../../styles/motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UseSimDataReturn } from '../../hooks/useSimData'
@@ -21,7 +22,6 @@ import type { Episode, Evaluation } from '../../lib/experimentIndex'
 import type { BaselineRunMeta } from '../../lib/baselineRuns'
 import type { BaselinePlan } from '../../lib/baselineManifest'
 import { parseBaselinePlan } from '../../lib/baselineManifest'
-import { policyLabel, rewardLabel } from '../../lib/rlLabels'
 import { freqLabel } from '../../lib/format'
 import { jammerActivity, jammerPositionAt } from '../../lib/jammers'
 import type { Trail } from '../canvas/TrajectoryLayer'
@@ -33,11 +33,15 @@ import { ReplayPicker } from '../rl/ReplayPicker'
 import { EventLog } from '../EventLog'
 import { FlowList, LinkDetail, LinkLegend, NodeDetail, NodeList } from '../InfoPanel'
 import type { Crumb } from '../ui/Breadcrumbs'
-import { Breadcrumbs } from '../ui/Breadcrumbs'
-import { Button } from '../ui/Button'
+import { Button, SECONDARY_BUTTON } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
 import { StatItem } from '../ui/StatItem'
-import { BaselineProvenance, BaselineSetupLine, baselineIdentityLabel } from './BaselineInfo'
+import {
+  BaselineProvenance,
+  BaselineSetupLine,
+  PlanPreview,
+  baselineIdentityLabel,
+} from './BaselineInfo'
 
 export interface RlContext {
   catalog: ResultCatalog
@@ -106,10 +110,8 @@ export interface BaselineContext {
 type PlanState = BaselinePlan | 'unavailable' | 'loading'
 
 /** Reads baseline-plan.json on demand; any failure leaves playback untouched */
-function useBaselinePlan(baseline: BaselineContext | null | undefined): PlanState {
+function useBaselinePlan(catalog: ResultCatalog | null, planPath: string | null): PlanState {
   const [plan, setPlan] = useState<PlanState>('loading')
-  const planPath = baseline?.meta.planPath ?? null
-  const catalog = baseline?.catalog ?? null
   useEffect(() => {
     if (!planPath || !catalog || !catalog.has(planPath)) {
       setPlan('unavailable')
@@ -133,16 +135,98 @@ function useBaselinePlan(baseline: BaselineContext | null | undefined): PlanStat
   return plan
 }
 
-/** Only the model policy is a trained model; other policies just share the group's seed */
-function trainingSeedText(episode: Episode) {
-  if (episode.trainingSeed === null || episode.trainingSeed === undefined) return ''
-  return episode.policy === 'model'
-    ? ` · model trained with seed ${episode.trainingSeed}`
-    : ` · evaluation group training seed ${episode.trainingSeed}`
+type View = 'canvas' | 'charts' | 'decisions'
+type Tab = 'overview' | 'nodes' | 'episode' | 'log'
+
+const PANEL_KEY = 'player.panelOpen'
+
+/** Whether the side panel is open, remembered per browser (falls back to open) */
+function usePanelOpen(): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(PANEL_KEY) !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const set = useCallback((next: boolean) => {
+    setOpen(next)
+    try {
+      window.localStorage.setItem(PANEL_KEY, String(next))
+    } catch {
+      // storage unavailable: the choice lasts for this page only
+    }
+  }, [])
+  return [open, set]
 }
 
-type View = 'canvas' | 'charts'
-type Tab = 'overview' | 'nodes' | 'episode' | 'decisions' | 'log'
+/** A window with a side column; the column is filled while the panel is open */
+function PanelIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="3.5"
+        width="15"
+        height="13"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path d="M12.5 3.5v13" stroke="currentColor" strokeWidth="1.6" />
+      <rect
+        x="13.3"
+        y="4.3"
+        width="3.4"
+        height="11.4"
+        rx="1.2"
+        fill="currentColor"
+        className={`${MOTION.fade} ${open ? 'opacity-100' : 'opacity-0'}`}
+      />
+    </svg>
+  )
+}
+
+/** Full screen for one element, tracking Esc and other ways the browser leaves it */
+function useFullscreen<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [active, setActive] = useState(false)
+  const supported = typeof document !== 'undefined' && !!document.fullscreenEnabled
+  useEffect(() => {
+    const onChange = () => setActive(document.fullscreenElement === ref.current)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+  const toggle = useCallback(() => {
+    // Either call can be refused (no user gesture, a policy); the page just stays as it is
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    else ref.current?.requestFullscreen().catch(() => {})
+  }, [])
+  return { ref, active, supported, toggle }
+}
+
+/** Four corners pointing out (enter) or in (exit) */
+function FullscreenIcon({ exit }: { exit: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {exit ? (
+        <path d="M7.5 3v4.5H3M12.5 3v4.5H17M7.5 17v-4.5H3M12.5 17v-4.5H17" />
+      ) : (
+        <path d="M3 7.5V3h4.5M17 7.5V3h-4.5M3 12.5V17h4.5M17 12.5V17h-4.5" />
+      )}
+    </svg>
+  )
+}
 
 function Section({
   title,
@@ -154,9 +238,9 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-ink-title">{title}</h3>
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4">
+        <h3 className="text-lg font-semibold tracking-tight text-ink-title">{title}</h3>
         {aside}
       </div>
       {children}
@@ -170,7 +254,6 @@ export function PlayerPage({
   onSeek,
   onSetSpeed,
   onClearLogs,
-  parents,
   title,
   rl,
   baseline,
@@ -178,15 +261,26 @@ export function PlayerPage({
   preferences = EMPTY_PLAYER_PREFERENCES,
   onPreferences,
 }: Props) {
-  const plan = useBaselinePlan(baseline)
+  const evalBaseline = rl?.evaluation.baselines[rl.episode.policy] ?? null
+  const plan = useBaselinePlan(
+    baseline?.catalog ?? rl?.catalog ?? null,
+    baseline?.meta.planPath ?? evalBaseline?.planPath ?? null
+  )
   const [view, setView] = useState<View>('canvas')
+  const [showPlacement, setShowPlacement] = useState(true)
   const tabs: { value: Tab; label: string }[] = [
     ...(rl ? [{ value: 'episode' as const, label: 'Episode' }] : []),
     { value: 'overview', label: 'Overview' },
     { value: 'nodes', label: 'Nodes' },
-    ...(rl ? [{ value: 'decisions' as const, label: 'Decisions' }] : []),
     { value: 'log', label: 'Log' },
   ]
+  const [panelOpen, setPanelOpen] = usePanelOpen()
+  const {
+    ref: sceneRef,
+    active: fullscreen,
+    supported: fullscreenSupported,
+    toggle: toggleFullscreen,
+  } = useFullscreen<HTMLDivElement>()
   const [tab, setTab] = useState<Tab>(() =>
     preferences.tab && tabs.some((t) => t.value === preferences.tab)
       ? preferences.tab
@@ -279,13 +373,18 @@ export function PlayerPage({
       } else if (join.outcome && join.outcome.intervalStartS !== null) {
         hit = sim.seekDecisionWindow(join.outcome.intervalStartS, join.outcome.intervalEndS)
       }
-      setSeekNotice(
-        hit === null
-          ? join.kind !== 'reset' && join.outcome?.intervalStartS === null
-            ? 'No playback frame at this decision: tick_s is unavailable, so its interval is unknown.'
-            : 'No playback frame at this decision: playback has no frame inside its outcome interval.'
-          : null
-      )
+      // Saved frames can be sparser than decisions: fall back to the nearest frame in time
+      if (hit === null && sim.frames.length > 0) {
+        const target = join.record.time_s
+        let best = 0
+        for (let i = 1; i < sim.frames.length; i++) {
+          if (Math.abs(sim.frames[i].time - target) < Math.abs(sim.frames[best].time - target)) {
+            best = i
+          }
+        }
+        sim.seek(best)
+      }
+      setSeekNotice(null)
     },
     [telemetry, explorer.index, sim]
   )
@@ -293,7 +392,7 @@ export function PlayerPage({
   // Opening Decisions selects the saved action under the playhead, else the first saved action
   const currentTime = sim.currentFrame?.time ?? null
   useEffect(() => {
-    if (tab !== 'decisions' || selectedDecision !== null || !telemetry || !explorer.index) return
+    if (view !== 'decisions' || selectedDecision !== null || !telemetry || !explorer.index) return
     if (telemetry.steps.length === 0) return
     const idx = explorer.index
     const atPlayhead = currentTime === null ? null : decisionAtTime(idx, currentTime)
@@ -301,13 +400,13 @@ export function PlayerPage({
     const pick =
       atPlayhead !== null && atPlayhead !== 0 ? atPlayhead : (firstAction ?? idx.minDecision)
     selectDecision(pick)
-  }, [tab, selectedDecision, telemetry, explorer.index, currentTime, selectDecision])
+  }, [view, selectedDecision, telemetry, explorer.index, currentTime, selectDecision])
 
   const frame = sim.currentFrame
   if (!frame) {
     return (
       <div
-        className="flex-1 flex items-center justify-center text-sm text-muted"
+        className="flex-1 flex items-center justify-center text-base text-ink-2"
         aria-busy="true"
         role="status"
       >
@@ -316,13 +415,19 @@ export function PlayerPage({
     )
   }
 
+  const placementPlan = typeof plan === 'object' ? plan : null
+
   const changeTab = (next: Tab) => {
     setTab(next)
     publish({ tab: next })
   }
 
-  // A click in the scene should show what was clicked, unless the explorer is open
-  const reveal = () => setTab((t) => (t === 'nodes' || t === 'decisions' ? t : 'overview'))
+  // A click in the scene shows what was clicked in the panel, opening it if needed
+  const reveal = () => {
+    if (view === 'decisions') return
+    setTab((t) => (t === 'nodes' ? t : 'overview'))
+    if (!panelOpen) setPanelOpen(true)
+  }
   const rememberNode = (id: number | null) => {
     const contractId = id !== null && mapped ? (mapped.contractIdByCsvId.get(id) ?? null) : null
     if (contractId !== preferences.nodeId) publish({ nodeId: contractId })
@@ -352,7 +457,7 @@ export function PlayerPage({
     }
   }
   const uncontrolledNode =
-    tab === 'decisions' && mapped && selectedNode !== null && !mapped.slotByCsvId.has(selectedNode)
+    view === 'decisions' && mapped && selectedNode !== null && !mapped.slotByCsvId.has(selectedNode)
       ? selectedNode
       : null
 
@@ -373,21 +478,45 @@ export function PlayerPage({
 
   const tabContent = (
     <>
-      {rl && (
-        <div className="mb-5">
+      <div className="pb-5 mb-5 border-b border-hairline">
+        {rl ? (
           <ReplayPicker
             key={rl.episode.dir}
             evaluations={rl.evaluations}
             current={rl.episode}
             onOpen={rl.onOpenEpisode}
             opening={rl.openingEpisode}
-            compact
           />
-        </div>
-      )}
+        ) : (
+          <div className="flex flex-col gap-1">
+            <h2 className="text-xl font-semibold tracking-tight text-ink-title">{title}</h2>
+            {baselineManifest !== undefined && (
+              <div className="text-base text-ink-2">
+                {baselineIdentityLabel(
+                  baselineManifest?.method ?? null,
+                  baselineManifest?.objective ?? null
+                )}
+                {baselineManifest === null && ' · manifest unreadable'}
+              </div>
+            )}
+            {sim.meta && (
+              <div className="text-base text-ink-2">
+                {sim.meta.scenario} · {freqLabel(sim.meta.frequency)} · {nodes.length} nodes
+              </div>
+            )}
+            {baselineManifest && (
+              <BaselineSetupLine
+                className="text-base text-ink-2"
+                initialDisplacementMTotal={baselineManifest.initialDisplacementMTotal}
+                plannerWallS={baselineManifest.plannerWallS}
+              />
+            )}
+          </div>
+        )}
+      </div>
       {tab === 'overview' && (
-        <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-6">
+          <div className="grid grid-cols-2 gap-3">
             <StatItem
               label="Nodes active"
               value={`${nodes.filter((n) => n.active).length}/${nodes.length}`}
@@ -417,12 +546,9 @@ export function PlayerPage({
             title="Selection"
             aside={
               (node || link) && (
-                <button
-                  onClick={() => selectNode(null)}
-                  className="text-[11px] font-medium text-muted hover:text-ink"
-                >
+                <Button variant="secondary" onClick={() => selectNode(null)}>
                   Clear
-                </button>
+                </Button>
               )
             }
           >
@@ -431,8 +557,8 @@ export function PlayerPage({
             ) : link ? (
               <LinkDetail link={link} />
             ) : (
-              <div className="text-xs text-muted">
-                Click a node or link in the scene, or pick one under Nodes, to inspect it.
+              <div className="text-base text-ink-2">
+                Click a node or link in the scene, or pick one under Nodes.
               </div>
             )}
           </Section>
@@ -441,11 +567,32 @@ export function PlayerPage({
             <LinkLegend />
           </Section>
 
+          {(baseline?.meta.planPath || rlBaseline?.planPath) && (
+            <Section title="Placement">
+              {plan === 'loading' ? (
+                <div className="text-base text-ink-2">Loading placement…</div>
+              ) : plan === 'unavailable' ? (
+                <div className="text-base text-ink-2">Placement plan unavailable.</div>
+              ) : (
+                <PlanPreview plan={plan} />
+              )}
+            </Section>
+          )}
+
           {baseline && (
             <BaselineProvenance
               manifest={baseline.meta.manifest}
               manifestError={baseline.meta.manifestError}
               plan={plan}
+            />
+          )}
+
+          {rlBaseline && (
+            <BaselineProvenance
+              manifest={rlBaseline.manifest}
+              evalInfo={rlBaseline}
+              plan={plan}
+              title="Baseline details"
             />
           )}
 
@@ -458,7 +605,7 @@ export function PlayerPage({
                   return (
                     <div
                       key={jammer.id}
-                      className="rounded-xl border border-hairline bg-white/75 px-3 py-2 text-sm text-ink-2"
+                      className="tile px-4 py-3 text-base text-ink-2 leading-relaxed"
                     >
                       <div className="font-semibold text-rose-700">
                         ◆ {jammer.id} ·{' '}
@@ -490,7 +637,7 @@ export function PlayerPage({
                     </div>
                   )
                 })}
-                <p className="text-xs text-muted">
+                <p className="text-base text-ink-2">
                   Inspect link SINR and traffic delivery to see the jammer’s measured effect.
                 </p>
               </div>
@@ -500,7 +647,7 @@ export function PlayerPage({
       )}
 
       {tab === 'nodes' && (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           <Section title={`Nodes (${nodes.length})`}>
             <NodeList frame={frame} selectedNode={selectedNode} onSelectNode={selectNode} />
           </Section>
@@ -525,10 +672,6 @@ export function PlayerPage({
           catalog={rl.catalog}
           evaluation={rl.evaluation}
           episode={rl.episode}
-          currentTime={frame.time}
-          telemetryState={telemetryState}
-          decisionIndex={explorer.index}
-          indexError={explorer.error}
           overlayOptions={rl.overlayOptions}
           overlayPolicies={rl.overlayPolicies}
           trailErrors={rl.trailErrors}
@@ -538,114 +681,74 @@ export function PlayerPage({
         />
       )}
 
-      {tab === 'decisions' && rl && (
-        <div className="flex flex-col gap-3">
-          {uncontrolledNode !== null && (
-            <Note>Node {uncontrolledNode} is not policy-controlled.</Note>
-          )}
-          <DecisionExplorer
-            episode={rl.episode}
-            telemetryState={telemetryState}
-            onLoadExplicitly={telemetryState.loadExplicitly}
-            index={explorer.index}
-            indexError={explorer.error}
-            mapping={mapping}
-            frame={frame}
-            selectedDecision={selectedDecision}
-            onSelectDecision={selectDecision}
-            decisionRange={decisionRange}
-            onDecisionRange={setDecisionRange}
-            focusSlot={focusSlot}
-            onFocusSlot={focusSlotFromChip}
-            seekNotice={seekNotice}
-          />
-        </div>
-      )}
-
       {tab === 'log' && <EventLog logs={logs} onClear={onClearLogs} />}
     </>
   )
 
+  const decisionsView = rl ? (
+    <div className="flex flex-col gap-4 sm:gap-5 pb-2">
+      {uncontrolledNode !== null && <Note>Node {uncontrolledNode} is not policy-controlled.</Note>}
+      <DecisionExplorer
+        episode={rl.episode}
+        telemetryState={telemetryState}
+        onLoadExplicitly={telemetryState.loadExplicitly}
+        index={explorer.index}
+        indexError={explorer.error}
+        mapping={mapping}
+        frame={frame}
+        selectedDecision={selectedDecision}
+        onSelectDecision={selectDecision}
+        decisionRange={decisionRange}
+        onDecisionRange={setDecisionRange}
+        focusSlot={focusSlot}
+        onFocusSlot={focusSlotFromChip}
+        seekNotice={seekNotice}
+      />
+    </div>
+  ) : null
+
+  const tabBar = <Segmented size="lg" stretch options={tabs} value={tab} onChange={changeTab} />
+
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3">
-      <header className="glass flex items-center gap-4 px-4 py-2.5 flex-shrink-0">
-        <div className="min-w-0">
-          <Breadcrumbs items={[...parents, { label: title }]} />
-          {rl ? (
-            <div className="text-sm text-ink-2 mt-1">
-              <strong className="text-ink">{rewardLabel(rl.evaluation)}</strong> ·{' '}
-              {rlBaseline
-                ? baselineIdentityLabel(
-                    rlBaseline.method ?? rl.episode.policy,
-                    rlBaseline.objective
-                  )
-                : policyLabel(rl.episode.policy)}{' '}
-              · evaluation seed {rl.episode.seed}
-              {trainingSeedText(rl.episode)}
-              {rlBaseline && (
-                <BaselineSetupLine
-                  initialDisplacementMTotal={rlBaseline.initialDisplacementMTotal}
-                  plannerWallS={rlBaseline.plannerWallS}
-                />
-              )}
-            </div>
-          ) : (
-            <>
-              {baselineManifest !== undefined && (
-                <div className="text-sm text-ink-2 mt-1">
-                  {baselineIdentityLabel(
-                    baselineManifest?.method ?? null,
-                    baselineManifest?.objective ?? null
-                  )}
-                  {baselineManifest === null && ' · manifest unreadable'}
-                </div>
-              )}
-              {sim.meta && (
-                <div className="text-sm text-muted truncate">
-                  {sim.meta.scenario} · {freqLabel(sim.meta.frequency)} · {nodes.length} nodes
-                </div>
-              )}
-              {baselineManifest && (
-                <BaselineSetupLine
-                  initialDisplacementMTotal={baselineManifest.initialDisplacementMTotal}
-                  plannerWallS={baselineManifest.plannerWallS}
-                />
-              )}
-            </>
+      <header className="flex items-center gap-3 flex-shrink-0">
+        <Segmented
+          size="lg"
+          options={[
+            { value: 'canvas', label: '3D' },
+            { value: 'charts', label: 'Charts' },
+            ...(rl ? [{ value: 'decisions' as const, label: 'Decisions' }] : []),
+          ]}
+          value={view}
+          onChange={setView}
+        />
+        <div className="ml-auto flex items-center gap-3">
+          {isDesktop && (
+            <button
+              type="button"
+              onClick={() => setPanelOpen(!panelOpen)}
+              aria-pressed={panelOpen}
+              aria-label={panelOpen ? 'Hide side panel' : 'Show side panel'}
+              title={panelOpen ? 'Hide side panel' : 'Show side panel'}
+              className={`${SECONDARY_BUTTON} !w-10 !px-0 ${panelOpen ? '!bg-accent-wash !text-accent-ink' : ''}`}
+            >
+              <PanelIcon open={panelOpen} />
+            </button>
           )}
-        </div>
-        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-          <Segmented
-            options={[
-              { value: 'canvas', label: '3D' },
-              { value: 'charts', label: 'Charts' },
-            ]}
-            value={view}
-            onChange={setView}
-          />
           <Button variant="secondary" onClick={onClose}>
             Close
           </Button>
         </div>
       </header>
 
-      {rl && (
-        <div className="lg:hidden">
-          <ReplayPicker
-            key={rl.episode.dir}
-            evaluations={rl.evaluations}
-            current={rl.episode}
-            onOpen={rl.onOpenEpisode}
-            opening={rl.openingEpisode}
-            compact
-          />
-        </div>
-      )}
-
-      <div className="flex flex-1 min-h-0 gap-3">
-        <div className="flex flex-col flex-1 min-w-0 gap-3">
+      <div className="flex flex-1 min-h-0">
+        {/* Full screen takes this whole column, so the controls come along with the scene */}
+        <div
+          ref={sceneRef}
+          className="flex flex-col flex-1 min-w-0 gap-3 [&:fullscreen]:p-3 [&:fullscreen]:bg-[#eef1f6]"
+        >
           {view === 'canvas' ? (
-            <div className="glass flex-1 min-h-[16rem] lg:min-h-0 p-1.5">
+            <div className={`glass flex-1 min-h-[16rem] lg:min-h-0 p-1.5 ${MOTION.enterFade}`}>
               <div className="relative h-full rounded-xl overflow-hidden">
                 <NetworkCanvas
                   frame={frame}
@@ -662,39 +765,69 @@ export function PlayerPage({
                   onSelectNode={selectNode}
                   onSelectLink={selectLink}
                   trails={rl?.trails}
+                  replayPolicy={rl?.episode.policy}
+                  placementPlan={showPlacement ? placementPlan : null}
                 />
+                {placementPlan && (
+                  <div
+                    role="group"
+                    aria-label="Baseline placement view"
+                    className="absolute top-3 left-3 z-10"
+                  >
+                    <Segmented
+                      size="lg"
+                      options={[
+                        { value: 'compare', label: 'Before & after' },
+                        { value: 'after', label: 'After only' },
+                      ]}
+                      value={showPlacement ? 'compare' : 'after'}
+                      onChange={(value) => setShowPlacement(value === 'compare')}
+                    />
+                  </div>
+                )}
                 <div
-                  className="absolute top-3 right-3 z-10 rounded-xl bg-white/90 border border-hairline shadow-control p-1"
+                  className="absolute top-3 right-3 z-10 flex items-center gap-2"
                   title="Compact view compresses distances for visibility; to-scale view preserves geometry."
                 >
                   <Segmented
-                    size="sm"
+                    size="lg"
                     options={[
                       { value: 'scale', label: 'To scale' },
-                      { value: 'compact', label: 'Compact view' },
+                      { value: 'compact', label: 'Compact' },
                     ]}
                     value={sim.compact ? 'compact' : 'scale'}
                     onChange={(value) => sim.setCompact(value === 'compact')}
                   />
+                  {fullscreenSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleFullscreen}
+                      aria-pressed={fullscreen}
+                      aria-label={fullscreen ? 'Exit full screen' : 'Full screen'}
+                      title={fullscreen ? 'Exit full screen' : 'Full screen'}
+                      className={`${SECONDARY_BUTTON} !w-11 !h-11 !px-0`}
+                    >
+                      <FullscreenIcon exit={fullscreen} />
+                    </button>
+                  )}
                 </div>
-                {rl && !sim.playing && sim.frameIndex === 0 && (
-                  <div className="absolute bottom-4 left-4 z-10 rounded-xl bg-ink/85 text-white px-4 py-2.5 text-sm shadow-control">
-                    Press Play to watch the {policyLabel(rl.episode.policy).toLowerCase()} replay.
-                    Colored lines show saved paths.
-                  </div>
-                )}
               </div>
             </div>
-          ) : (
-            <div className="flex-1 min-h-0">
+          ) : view === 'charts' ? (
+            <div className={`flex-1 min-h-0 ${MOTION.enterFade}`}>
               <ChartsView
                 frames={sim.frames}
                 frameIndex={sim.frameIndex}
+                frameAlphaRef={sim.frameAlphaRef}
                 selectedLink={selectedLink}
                 onSelectLink={selectLink}
                 preferredMetric={preferences.metric}
                 onMetricChange={onMetricChange}
               />
+            </div>
+          ) : (
+            <div className={`flex-1 min-h-0 overflow-y-auto ${MOTION.enterFade}`}>
+              {decisionsView}
             </div>
           )}
 
@@ -704,6 +837,8 @@ export function PlayerPage({
             frameIndex={sim.frameIndex}
             totalFrames={sim.frames.length}
             currentTime={frame.time}
+            duration={sim.frames[sim.frames.length - 1]?.time}
+            frameAlphaRef={sim.frameAlphaRef}
             onPlay={sim.play}
             onPause={sim.pause}
             onSeek={onSeek}
@@ -712,25 +847,37 @@ export function PlayerPage({
 
           {!isDesktop && (
             <div className="glass flex flex-col min-h-0 max-h-[45dvh] flex-shrink-0">
-              <div className="p-2 flex-shrink-0 overflow-x-auto">
-                <Segmented stretch size="sm" options={tabs} value={tab} onChange={changeTab} />
+              <div className="p-3 flex-shrink-0 overflow-x-auto">{tabBar}</div>
+              <div
+                key={tab}
+                className={`flex-1 min-h-0 overflow-y-auto px-5 pb-5 pt-2 ${MOTION.enterFade}`}
+              >
+                {tabContent}
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">{tabContent}</div>
             </div>
           )}
         </div>
 
         {isDesktop && (
-          <aside
-            className={`glass flex-shrink-0 flex flex-col min-h-0 ${
-              tab === 'decisions' ? 'w-[23rem] xl:w-[min(50vw,44rem)]' : 'w-[23rem] xl:w-[26rem]'
+          // The panel keeps its width inside a wrapper that slides between 0 and full, so its
+          // content never reflows mid-animation; the scene beside it widens smoothly
+          <div
+            className={`flex-shrink-0 overflow-hidden ${MOTION.panel} ${
+              panelOpen ? 'w-[24.75rem] xl:w-[27.75rem] opacity-100' : 'w-0 opacity-0'
             }`}
+            aria-hidden={!panelOpen}
+            {...({ inert: panelOpen ? undefined : '' } as Record<string, string | undefined>)}
           >
-            <div className="p-3 flex-shrink-0">
-              <Segmented stretch size="sm" options={tabs} value={tab} onChange={changeTab} />
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 pt-3">{tabContent}</div>
-          </aside>
+            <aside className="glass ml-3 h-full flex flex-col min-h-0 w-[24rem] xl:w-[27rem]">
+              <div className="p-4 flex-shrink-0">{tabBar}</div>
+              <div
+                key={tab}
+                className={`flex-1 min-h-0 overflow-y-auto px-6 pb-6 pt-2 ${MOTION.enterFade}`}
+              >
+                {tabContent}
+              </div>
+            </aside>
+          </div>
         )}
       </div>
     </div>

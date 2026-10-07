@@ -57,3 +57,25 @@ export function headingRotation(
   const q = new THREE.Quaternion().setFromUnitVectors(up, dir)
   return new THREE.Euler().setFromQuaternion(q)
 }
+
+/**
+ * A node's position part-way to its next saved frame (t in 0..1), in Three.js coordinates.
+ * Without a next frame (last frame, or the node disappears) it stays where it is.
+ */
+export function lerpNodeToThree(
+  node: { x: number; y: number; z: number },
+  next: { x: number; y: number; z: number } | undefined,
+  t: number,
+  dim: 1 | 2 | 3 = 3,
+  posScale = 1
+): [number, number, number] {
+  if (!next || t <= 0) return simToThree(node.x, node.y, node.z, dim, posScale)
+  const k = Math.min(1, t)
+  return simToThree(
+    node.x + (next.x - node.x) * k,
+    node.y + (next.y - node.y) * k,
+    node.z + (next.z - node.z) * k,
+    dim,
+    posScale
+  )
+}

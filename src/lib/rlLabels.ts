@@ -15,6 +15,12 @@ export function rewardLabel(evaluation: Evaluation): string {
     : []
   if (components.length === 1 && components[0] === 'service_success') return 'Binary +1/−1'
   if (components.length === 1 && components[0] === 'sinr_quality') return 'SINR quality (0–1)'
+  if (components.length === 1 && components[0] === 'delivery_ratio') return 'Delivery'
+  if (components.length === 1 && components[0] === 'throughput_mbps') return 'Throughput'
+  if (components.includes('unmet_sinr_quality') && components.includes('connectivity'))
+    return 'Service + mesh'
+  if (components.includes('sinr_quality') && components.includes('span_travel_fraction'))
+    return 'SINR − span travel'
   if (
     components.length === 2 &&
     components[0] === 'sinr_quality' &&
@@ -23,7 +29,10 @@ export function rewardLabel(evaluation: Evaluation): string {
     const weights = Array.isArray(schema.weights) ? schema.weights : []
     if (typeof weights[1] === 'number' && weights[1] < 0) return 'SINR quality − movement'
   }
+  if (components.length > 3 && components.includes('unsafe_proximity_fraction'))
+    return 'Service + safety'
   if (components.length === 0) return evaluation.label
+  if (components.length > 3) return 'Combined reward'
   return components.map((component) => component.replace(/_/g, ' ')).join(' + ')
 }
 
