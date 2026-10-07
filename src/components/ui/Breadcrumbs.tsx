@@ -1,3 +1,5 @@
+import { MOTION } from '../../styles/motion'
+
 export interface Crumb {
   label: string
   onClick?: () => void
@@ -13,8 +15,9 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
           <span key={`${c.label}-${i}`} className="flex items-center gap-1.5 min-w-0">
             {c.onClick && !last ? (
               <button
+                type="button"
                 onClick={c.onClick}
-                className="text-muted hover:text-accent-ink font-medium whitespace-nowrap transition-colors"
+                className={`text-muted hover:text-accent-ink font-medium whitespace-nowrap ${MOTION.colors}`}
               >
                 {c.label}
               </button>

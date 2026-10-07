@@ -7,6 +7,7 @@ import type { Scenario } from '../../lib/scenarioGroups'
 import { folderLabel } from '../../lib/format'
 import { experimentLabel } from '../../lib/rlLabels'
 import { BaselineBadges, BaselineSetupLine, truncateText } from './BaselineInfo'
+import { MOTION } from '../../styles/motion'
 
 export { groupRuns, groupScenarios, unplayableForBatch } from '../../lib/scenarioGroups'
 export type { Scenario } from '../../lib/scenarioGroups'
@@ -124,7 +125,9 @@ export function ScenarioRow({
     : []
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/60 transition-colors">
+    <div
+      className={`flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/60 ${MOTION.colors}`}
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium text-ink truncate">{scenario.name}</span>
@@ -168,9 +171,10 @@ export function ScenarioRow({
         {scenario.runs.map((run) => (
           <button
             key={run.key}
+            type="button"
             onClick={() => onOpen(run)}
             title={`Play ${scenario.name} ${run.seed}`}
-            className="min-w-[1.75rem] h-7 px-1.5 rounded-lg text-xs font-medium tabular-nums bg-white border border-hairline text-ink-2 shadow-control hover:border-accent hover:text-accent-ink transition-colors"
+            className={`min-w-[1.75rem] h-7 px-1.5 rounded-lg text-xs font-medium tabular-nums bg-white border border-hairline text-ink-2 shadow-control hover:border-accent hover:text-accent-ink ${MOTION.colors}`}
           >
             {seedNumber(run.seed)}
           </button>
@@ -185,8 +189,9 @@ export function ExperimentRow({ root, onOpen }: { root: ExperimentRoot; onOpen: 
   const { name, date } = folderLabel(root.root)
   return (
     <button
+      type="button"
       onClick={onOpen}
-      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-white/80 transition-colors"
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-white/80 ${MOTION.colors}`}
     >
       <div className="flex-1 min-w-0">
         <div className="text-base font-semibold text-ink truncate">

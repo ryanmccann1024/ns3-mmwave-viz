@@ -1,3 +1,5 @@
+import { MOTION } from '../../styles/motion'
+
 interface Option<T extends string | number> {
   value: T
   label: string
@@ -33,9 +35,11 @@ export function Segmented<T extends string | number>({
         return (
           <button
             key={String(o.value)}
+            type="button"
+            aria-pressed={active}
             onClick={() => !o.disabled && onChange(o.value)}
             disabled={o.disabled}
-            className={`${pad} ${stretch ? 'flex-1' : ''} rounded-md font-medium whitespace-nowrap transition-all ${
+            className={`${pad} ${stretch ? 'flex-1' : ''} rounded-md font-medium whitespace-nowrap ${MOTION.colors} ${
               active
                 ? 'bg-white text-ink shadow-control'
                 : o.disabled

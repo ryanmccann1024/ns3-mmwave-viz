@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { ArtifactState, Experiment, FetchSnapshot } from '../lib/experimentIndex'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
+import { MOTION } from '../styles/motion'
 
 const STATE_CLASSES: Record<ArtifactState, string> = {
   ok: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
@@ -58,7 +59,9 @@ export function Note({
         ? 'bg-amber-50 border-amber-200 text-amber-800'
         : 'bg-white/60 border-hairline text-ink-2'
   return (
-    <div className={`text-sm leading-relaxed border rounded-lg px-3.5 py-2.5 break-words ${cls}`}>
+    <div
+      className={`text-sm leading-relaxed border rounded-lg px-3.5 py-2.5 break-words ${cls} ${tone === 'error' ? MOTION.enter : MOTION.enterFade}`}
+    >
       {children}
     </div>
   )

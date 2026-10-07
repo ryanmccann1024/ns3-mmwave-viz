@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { SimFrame } from '../../types'
 import {
   useMetricSeries,
@@ -14,11 +14,29 @@ interface Props {
   frameIndex: number
   selectedLink: string | null
   onSelectLink: (key: string) => void
+  /** a preferred metric carried across compatible episodes; used only when this run has it */
+  preferredMetric?: MetricId | null
+  onMetricChange?: (metric: MetricId) => void
 }
 
-export function ChartsView({ frames, frameIndex, selectedLink, onSelectLink }: Props) {
-  const [selectedMetric, setSelectedMetric] = useState<MetricId>('sinr')
+export function ChartsView({
+  frames,
+  frameIndex,
+  selectedLink,
+  onSelectLink,
+  preferredMetric,
+  onMetricChange,
+}: Props) {
   const available = useAvailableMetrics(frames)
+  const [chosenMetric, setChosenMetric] = useState<MetricId>(preferredMetric ?? 'sinr')
+  // Fall back to the first metric this run actually has rather than an empty chart
+  const selectedMetric: MetricId = available.has(chosenMetric)
+    ? chosenMetric
+    : (METRICS.find((m) => available.has(m.id))?.id ?? chosenMetric)
+  useEffect(() => {
+    onMetricChange?.(selectedMetric)
+  }, [selectedMetric, onMetricChange])
+  const setSelectedMetric = (metric: MetricId) => setChosenMetric(metric)
   const series = useMetricSeries(frames, selectedMetric)
   const config = METRICS.find((m) => m.id === selectedMetric)!
   const currentTime = frames[frameIndex]?.time ?? 0

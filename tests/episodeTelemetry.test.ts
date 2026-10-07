@@ -5,6 +5,7 @@ import {
   decisionWindow,
   maskBySlot,
   parseSteps,
+  recordForDecision,
   rewardComponents,
   rewardSeries,
   rewardState,
@@ -120,4 +121,12 @@ test('actions and masks are split per slot', () => {
     [false, true, true]
   )
   assert.equal(maskBySlot(contract, { ...parsed.steps[1], mask: [1, 1] }), null)
+})
+
+test('recordForDecision is keyed by decision value, not array row', () => {
+  const parsed = parseSteps(jsonl(header, step(0), step(1), step(3)))
+  assert.ok(parsed.ok)
+  for (const n of [0, 1, 3]) assert.equal(recordForDecision(parsed, n)?.decision, n)
+  assert.equal(recordForDecision(parsed, 2), null)
+  assert.equal(recordForDecision(parsed, 4), null)
 })

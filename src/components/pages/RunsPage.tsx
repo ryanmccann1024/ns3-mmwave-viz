@@ -5,6 +5,7 @@ import { PageHeader } from '../ui/PageHeader'
 import { Panel } from '../ui/Panel'
 import { truncateText } from './BaselineInfo'
 import { ScenarioRow, groupRuns, groupScenarios, unplayableForBatch } from './shared'
+import { MOTION } from '../../styles/motion'
 
 interface Props {
   workspace: Workspace
@@ -49,7 +50,7 @@ export function RunsPage({ workspace, onHome, onOpenRun }: Props) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter runs"
-            className="w-64 px-3 py-2 rounded-xl text-sm bg-white border border-hairline shadow-control outline-none focus:border-accent placeholder:text-faint"
+            className="w-64 px-3 py-2 rounded-xl text-sm bg-white border border-hairline shadow-control focus-visible:border-accent placeholder:text-faint"
           />
         }
       />
@@ -62,25 +63,28 @@ export function RunsPage({ workspace, onHome, onOpenRun }: Props) {
       )}
 
       {batches.length === 0 && (
-        <div className="glass p-6 text-sm text-muted text-center">
+        <div className={`glass p-6 text-sm text-muted text-center ${MOTION.enterFade}`}>
           {workspace.runs.length === 0 && unplayable.length === 0
             ? 'No simulation runs in this folder.'
             : 'No runs match that filter.'}
         </div>
       )}
 
-      {batches.map(({ batch, runs, scenarios }) => (
-        <Panel
-          key={batch}
-          title={<span className="font-mono">{batch}</span>}
-          meta={`${scenarios.length} scenarios · ${runs.length} runs`}
-          bodyClassName="px-2 pb-2"
-        >
-          {scenarios.map((scenario) => (
-            <ScenarioRow key={scenario.key} scenario={scenario} onOpen={onOpenRun} />
-          ))}
-        </Panel>
-      ))}
+      {/* Keyed on the filter so a new result set fades in as a whole, never row by row */}
+      <div key={query} className={`flex flex-col gap-4 ${MOTION.enterFade}`}>
+        {batches.map(({ batch, runs, scenarios }) => (
+          <Panel
+            key={batch}
+            title={<span className="font-mono">{batch}</span>}
+            meta={`${scenarios.length} scenarios · ${runs.length} runs`}
+            bodyClassName="px-2 pb-2"
+          >
+            {scenarios.map((scenario) => (
+              <ScenarioRow key={scenario.key} scenario={scenario} onOpen={onOpenRun} />
+            ))}
+          </Panel>
+        ))}
+      </div>
     </div>
   )
 }

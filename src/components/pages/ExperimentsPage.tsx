@@ -7,6 +7,7 @@ import { PageHeader } from '../ui/PageHeader'
 import { Tag } from './shared'
 import { experimentLabel } from '../../lib/rlLabels'
 import { Button } from '../ui/Button'
+import { MOTION } from '../../styles/motion'
 
 interface Props {
   workspace: Workspace
@@ -33,7 +34,7 @@ function Card({
   return (
     <button
       onClick={onClick}
-      className="glass p-5 text-left flex flex-col gap-4 hover:bg-white/85 hover:border-accent/30 transition-colors min-h-44"
+      className={`glass p-5 text-left flex flex-col gap-4 hover:bg-white/85 hover:border-accent/30 ${MOTION.surface} min-h-44`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">

@@ -2,6 +2,12 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import type { SimFrame, SimMeta, BuildingState, JammerState } from '../types'
 import { parseMeta, parseBuildings, parseFiles } from '../lib/parseSimFiles'
 import { parseJammers, jammerPositionAt } from '../lib/jammers'
+import type { DeclaredNodeIds } from '../lib/nodeIdentity'
+import { parseArchivedNodeIds } from '../lib/nodeIdentity'
+import { frameIndexAtTime, frameIndexForDecisionWindow } from '../lib/frameSeek'
+
+/** Boundary slack when matching a playback frame to a decision interval (seconds). */
+export const SEEK_TOLERANCE_S = 1e-6
 
 export type PlaybackSpeed = 0.5 | 1 | 2 | 5 | 10
 
@@ -26,6 +32,8 @@ interface SimDataState {
   buildings: BuildingState[]
   jammers: JammerState[]
   sceneBounds: SceneBounds
+  /** ordered node IDs from the archived inputs/nodes.json, when one was loaded */
+  declaredNodeIds: DeclaredNodeIds
 }
 
 function computeBounds(
@@ -98,7 +106,16 @@ export type UseSimDataReturn = SimDataState & {
   reset: () => void
   play: () => void
   pause: () => void
+  /** clamped to the loaded frames; does not pause */
   seek: (index: number) => void
+  /**
+   * Pause and seek to the latest frame inside the half-open interval
+   * (startExclusiveS, endInclusiveS]; returns the frame index, or null (and
+   * leaves playback untouched) when no frame lies inside.
+   */
+  seekDecisionWindow: (startExclusiveS: number, endInclusiveS: number) => number | null
+  /** Pause and seek to the frame recorded at an instant (reset snapshot), or null. */
+  seekInstant: (atS: number) => number | null
   setSpeed: (speed: PlaybackSpeed) => void
   setCompact: (compact: boolean) => void
 }
@@ -117,6 +134,7 @@ export function useSimData(): UseSimDataReturn {
     buildings: [],
     jammers: [],
     sceneBounds: DEFAULT_BOUNDS,
+    declaredNodeIds: { status: 'absent' },
   })
 
   const rafRef = useRef<number | null>(null)
@@ -129,6 +147,9 @@ export function useSimData(): UseSimDataReturn {
   const tickMsRef = useRef(100)
   /** Updated every RAF tick — read in R3F useFrame for smooth interpolation */
   const frameAlphaRef = useRef(0)
+  /** Incremented per loadFiles/reset so a superseded load can never paint over a newer one */
+  const loadTokenRef = useRef(0)
+  const frameTimesRef = useRef<Float64Array>(new Float64Array(0))
 
   useEffect(() => {
     framesLenRef.current = state.frames.length
@@ -216,6 +237,7 @@ export function useSimData(): UseSimDataReturn {
         })
 
       const optRead = (f?: File) => (f ? readFile(f) : Promise.resolve(undefined))
+      const token = ++loadTokenRef.current
 
       Promise.all([
         readFile(files.linksFile),
@@ -239,6 +261,7 @@ export function useSimData(): UseSimDataReturn {
           mcsText,
           rxPowerText,
         ]) => {
+          if (token !== loadTokenRef.current) return
           stopInterval()
           const meta = parseMeta(posText)
           const frames = parseFiles({
@@ -253,9 +276,11 @@ export function useSimData(): UseSimDataReturn {
           const buildings = buildingsText ? parseBuildings(buildingsText) : []
           const jammers = jammersJsonText ? parseJammers(jammersJsonText) : []
           const sceneBounds = computeBounds(frames, buildings, jammers)
+          const declaredNodeIds = parseArchivedNodeIds(nodesJsonText)
           framesLenRef.current = frames.length
           frameIndexRef.current = 0
           frameAlphaRef.current = 0
+          frameTimesRef.current = Float64Array.from(frames, (f) => f.time)
           setState({
             frames,
             frameIndex: 0,
@@ -266,6 +291,7 @@ export function useSimData(): UseSimDataReturn {
             buildings,
             jammers,
             sceneBounds,
+            declaredNodeIds,
           })
         }
       )
@@ -274,10 +300,12 @@ export function useSimData(): UseSimDataReturn {
   )
 
   const reset = useCallback(() => {
+    loadTokenRef.current++
     stopInterval()
     frameAlphaRef.current = 0
     framesLenRef.current = 0
     frameIndexRef.current = 0
+    frameTimesRef.current = new Float64Array(0)
     setState({
       frames: [],
       frameIndex: 0,
@@ -288,6 +316,7 @@ export function useSimData(): UseSimDataReturn {
       buildings: [],
       jammers: [],
       sceneBounds: DEFAULT_BOUNDS,
+      declaredNodeIds: { status: 'absent' },
     })
   }, [stopInterval])
 
@@ -310,11 +339,42 @@ export function useSimData(): UseSimDataReturn {
   }, [stopInterval])
 
   const seek = useCallback((index: number) => {
+    const last = Math.max(0, framesLenRef.current - 1)
+    const clamped = Math.min(last, Math.max(0, Number.isFinite(index) ? Math.floor(index) : 0))
     accumulatedMs.current = 0
     frameAlphaRef.current = 0
-    frameIndexRef.current = index
-    setState((prev) => ({ ...prev, frameIndex: index }))
+    frameIndexRef.current = clamped
+    setState((prev) => ({ ...prev, frameIndex: clamped }))
   }, [])
+
+  const seekDecisionWindow = useCallback(
+    (startExclusiveS: number, endInclusiveS: number) => {
+      const index = frameIndexForDecisionWindow(
+        frameTimesRef.current,
+        startExclusiveS,
+        endInclusiveS,
+        SEEK_TOLERANCE_S
+      )
+      if (index === null) return null
+      stopInterval()
+      frameIndexRef.current = index
+      setState((prev) => ({ ...prev, playing: false, frameIndex: index }))
+      return index
+    },
+    [stopInterval]
+  )
+
+  const seekInstant = useCallback(
+    (atS: number) => {
+      const index = frameIndexAtTime(frameTimesRef.current, atS, SEEK_TOLERANCE_S)
+      if (index === null) return null
+      stopInterval()
+      frameIndexRef.current = index
+      setState((prev) => ({ ...prev, playing: false, frameIndex: index }))
+      return index
+    },
+    [stopInterval]
+  )
 
   const setSpeed = useCallback((speed: PlaybackSpeed) => {
     speedRef.current = speed
@@ -340,6 +400,8 @@ export function useSimData(): UseSimDataReturn {
     play,
     pause,
     seek,
+    seekDecisionWindow,
+    seekInstant,
     setSpeed,
     setCompact,
   }

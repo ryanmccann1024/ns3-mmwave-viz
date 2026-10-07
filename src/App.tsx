@@ -16,7 +16,9 @@ import { RunsPage } from './components/pages/RunsPage'
 import { ExperimentsPage } from './components/pages/ExperimentsPage'
 import type { ExperimentTab } from './components/pages/ExperimentPage'
 import { ExperimentPage } from './components/pages/ExperimentPage'
-import { PlayerPage } from './components/pages/PlayerPage'
+import type { PlayerPreferences } from './components/pages/PlayerPage'
+import { EMPTY_PLAYER_PREFERENCES, PlayerPage } from './components/pages/PlayerPage'
+import { MOTION } from './styles/motion'
 import { policyLabel, rewardLabel } from './lib/rlLabels'
 import { TrainingRunPage, trainingRunTitle } from './components/pages/TrainingRunPage'
 import { Note } from './components/ExperimentStatus'
@@ -41,6 +43,10 @@ export default function App() {
   const [experimentTab, setExperimentTab] = useState<ExperimentTab>('results')
   const [trainingRoot, setTrainingRoot] = useState<string | null>(null)
   const [trainingError, setTrainingError] = useState<string | null>(null)
+  // Compatible player choices (string node id, tab, chart metric) carried across episodes;
+  // the keyed PlayerPage remount still resets everything episode-relative
+  const [playerPreferences, setPlayerPreferences] =
+    useState<PlayerPreferences>(EMPTY_PLAYER_PREFERENCES)
 
   function navigate(section: Section) {
     closePlayer()
@@ -172,6 +178,15 @@ export default function App() {
   const section: Section =
     page === 'experiment' || page === 'training' || page === 'player' ? 'experiments' : page
 
+  const pageKey =
+    page === 'player'
+      ? `player:${playing?.kind === 'run' ? playing.run.key : playing ? playing.episode.dir : ''}`
+      : page === 'experiment'
+        ? `experiment:${session.experiment?.root ?? ''}`
+        : page === 'training'
+          ? `training:${trainingRoot ?? ''}`
+          : page
+
   let content
   if (page === 'player') {
     const ctx = playerContext()
@@ -211,6 +226,8 @@ export default function App() {
         rl={rl}
         baseline={baseline}
         onClose={ctx.back}
+        preferences={playerPreferences}
+        onPreferences={setPlayerPreferences}
       />
     )
   } else if (page === 'experiment') {
@@ -281,11 +298,14 @@ export default function App() {
       <main
         className={`flex-1 min-w-0 flex flex-col ${page === 'player' ? 'min-h-0' : 'overflow-y-auto'}`}
       >
-        {page === 'player' ? (
-          content
-        ) : (
-          <div className="w-full max-w-6xl mx-auto px-3 py-4 flex flex-col flex-1">{content}</div>
-        )}
+        {/* Each page change fades in (opacity only, no exit animation, no translate on the canvas) */}
+        <div key={pageKey} className={`flex flex-col flex-1 min-h-0 ${MOTION.enterFade}`}>
+          {page === 'player' ? (
+            content
+          ) : (
+            <div className="w-full max-w-6xl mx-auto px-3 py-4 flex flex-col flex-1">{content}</div>
+          )}
+        </div>
       </main>
 
       {/* Fallback folder picker for browsers without the File System Access API */}
