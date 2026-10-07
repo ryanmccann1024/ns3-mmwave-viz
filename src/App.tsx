@@ -193,6 +193,11 @@ export default function App() {
             onTrailNode: session.setTrailNode,
           }
         : null
+    // A standalone baseline seed carries its manifest metadata; the catalog reads its plan lazily
+    const baseline =
+      playing?.kind === 'run' && playing.run.baseline && workspace.catalog
+        ? { meta: playing.run.baseline, catalog: workspace.catalog }
+        : null
     content = (
       <PlayerPage
         key={playing?.kind === 'run' ? playing.run.key : playing ? playing.episode.dir : undefined}
@@ -204,6 +209,7 @@ export default function App() {
         parents={ctx.parents}
         title={ctx.title}
         rl={rl}
+        baseline={baseline}
         onClose={ctx.back}
       />
     )

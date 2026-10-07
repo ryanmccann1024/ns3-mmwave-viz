@@ -162,3 +162,71 @@ test('episodes.csv rows stay strings', () => {
   assert.deepEqual(table.rows, [{ label: 'rowA', training_seed: '101', return: '20.0' }])
   assert.deepEqual(table.errors, [])
 })
+
+test('placement baselines (geometric, optimization) render saved statistics unchanged', () => {
+  const [savedHold] = RL.evaluations[0].comparisons
+  const geometric = {
+    ...savedHold,
+    baseline: 'geometric',
+    model_mean: 0.7000000000000001,
+    baseline_mean: 0.6123456789,
+    // deliberately not model_mean - baseline_mean: the viewer must not recompute it
+    mean_difference: 0.123,
+    std_difference: 0.02,
+    interval: interval('paired_t_across_evaluation_seeds', 3, 0.05, 0.196),
+  }
+  const optimization = {
+    ...savedHold,
+    baseline: 'optimization',
+    model_mean: null,
+    baseline_mean: 0.9,
+    mean_difference: null,
+    interval: null,
+    interval_omitted: 'model episodes missing',
+  }
+  const [savedGroup] = RL.groups[0].comparisons
+  const view = buildComparisonView({
+    ...RL,
+    evaluations: [{ ...RL.evaluations[0], comparisons: [geometric, optimization] }],
+    groups: [
+      {
+        ...RL.groups[0],
+        comparisons: [
+          { ...savedGroup, baseline: 'geometric', mean_difference: 0.05, interval: null },
+        ],
+      },
+    ],
+  })
+  const [g, o] = view.pairedRows
+  assert.deepEqual(
+    view.pairedRows.map((r) => r.baseline),
+    ['geometric', 'optimization']
+  )
+  assert.equal(g.modelMean, 0.7000000000000001)
+  assert.equal(g.baselineMean, 0.6123456789)
+  assert.equal(g.meanDifference, 0.123)
+  assert.deepEqual(g.interval, {
+    low: 0.05,
+    high: 0.196,
+    level: 0.95,
+    n: 3,
+    kind: 'paired_t_across_evaluation_seeds',
+  })
+  assert.equal(g.nUsed, 3)
+  assert.equal(g.nExpected, 3)
+  assert.equal(g.intervalScope, PAIRED_INTERVAL_SCOPE)
+  assert.equal(formatNumber(g.modelMean), '0.7000000000000001')
+
+  assert.equal(o.modelMean, null)
+  assert.equal(o.meanDifference, null)
+  assert.equal(o.baselineMean, 0.9)
+  assert.equal(o.interval, null)
+  assert.equal(o.intervalOmitted, 'model episodes missing')
+
+  const [group] = view.groupRows
+  assert.equal(group.baseline, 'geometric')
+  assert.equal(group.meanDifference, 0.05)
+  assert.equal(group.interval, null)
+  assert.equal(group.intervalOmitted, 'no interval recorded')
+  assert.equal(group.intervalScope, GROUP_INTERVAL_SCOPE)
+})

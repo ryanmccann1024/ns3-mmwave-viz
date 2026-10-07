@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UseSimDataReturn } from '../../hooks/useSimData'
 import type { OverlayOption } from '../../hooks/useExperimentSession'
 import type { LogEntry } from '../../types'
 import type { ResultCatalog } from '../../lib/resultCatalog'
 import type { Episode, Evaluation } from '../../lib/experimentIndex'
+import type { BaselineRunMeta } from '../../lib/baselineRuns'
+import type { BaselinePlan } from '../../lib/baselineManifest'
+import { parseBaselinePlan } from '../../lib/baselineManifest'
 import { policyLabel, rewardLabel } from '../../lib/rlLabels'
 import { freqLabel } from '../../lib/format'
 import { jammerActivity, jammerPositionAt } from '../../lib/jammers'
@@ -21,6 +24,7 @@ import { Breadcrumbs } from '../ui/Breadcrumbs'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
 import { StatItem } from '../ui/StatItem'
+import { BaselineProvenance, BaselineSetupLine, baselineIdentityLabel } from './BaselineInfo'
 
 export interface RlContext {
   catalog: ResultCatalog
@@ -48,7 +52,52 @@ interface Props {
   parents: Crumb[]
   title: string
   rl: RlContext | null
+  /** a standalone baseline seed: its manifest metadata and the catalog to read its plan from */
+  baseline?: BaselineContext | null
   onClose: () => void
+}
+
+export interface BaselineContext {
+  meta: BaselineRunMeta
+  catalog: ResultCatalog
+}
+
+type PlanState = BaselinePlan | 'unavailable' | 'loading'
+
+/** Reads baseline-plan.json on demand; any failure leaves playback untouched */
+function useBaselinePlan(baseline: BaselineContext | null | undefined): PlanState {
+  const [plan, setPlan] = useState<PlanState>('loading')
+  const planPath = baseline?.meta.planPath ?? null
+  const catalog = baseline?.catalog ?? null
+  useEffect(() => {
+    if (!planPath || !catalog || !catalog.has(planPath)) {
+      setPlan('unavailable')
+      return
+    }
+    let cancelled = false
+    setPlan('loading')
+    catalog
+      .getFile(planPath)
+      .then((file) => (file ? file.text() : null))
+      .then((text) => {
+        if (cancelled) return
+        const parsed = text === null ? null : parseBaselinePlan(text)
+        setPlan(parsed?.ok ? parsed.value : 'unavailable')
+      })
+      .catch(() => !cancelled && setPlan('unavailable'))
+    return () => {
+      cancelled = true
+    }
+  }, [planPath, catalog])
+  return plan
+}
+
+/** Only the model policy is a trained model; other policies just share the group's seed */
+function trainingSeedText(episode: Episode) {
+  if (episode.trainingSeed === null || episode.trainingSeed === undefined) return ''
+  return episode.policy === 'model'
+    ? ` · model trained with seed ${episode.trainingSeed}`
+    : ` · evaluation group training seed ${episode.trainingSeed}`
 }
 
 type View = 'canvas' | 'charts'
@@ -83,8 +132,10 @@ export function PlayerPage({
   parents,
   title,
   rl,
+  baseline,
   onClose,
 }: Props) {
+  const plan = useBaselinePlan(baseline)
   const [view, setView] = useState<View>('canvas')
   const [tab, setTab] = useState<Tab>(rl ? 'episode' : 'overview')
   const [selectedNode, setSelectedNode] = useState<number | null>(null)
@@ -122,6 +173,9 @@ export function PlayerPage({
   const avgSinr = sinrLinks.length
     ? sinrLinks.reduce((s, l) => s + (l.sinr ?? 0), 0) / sinrLinks.length
     : null
+  const rlBaseline = rl ? (rl.evaluation.baselines[rl.episode.policy] ?? null) : null
+  /** undefined: not a baseline run; null: baseline run whose manifest could not be read */
+  const baselineManifest = baseline ? baseline.meta.manifest : undefined
   const demand = flows.reduce((s, f) => s + f.demandMbps, 0)
   const delivered = flows.reduce((s, f) => s + f.deliveredMbps, 0)
 
@@ -140,15 +194,44 @@ export function PlayerPage({
           {rl ? (
             <div className="text-sm text-ink-2 mt-1">
               <strong className="text-ink">{rewardLabel(rl.evaluation)}</strong> ·{' '}
-              {policyLabel(rl.episode.policy)} · evaluation seed {rl.episode.seed} · model trained
-              with seed {rl.episode.trainingSeed ?? 'none'}
+              {rlBaseline
+                ? baselineIdentityLabel(
+                    rlBaseline.method ?? rl.episode.policy,
+                    rlBaseline.objective
+                  )
+                : policyLabel(rl.episode.policy)}{' '}
+              · evaluation seed {rl.episode.seed}
+              {trainingSeedText(rl.episode)}
+              {rlBaseline && (
+                <BaselineSetupLine
+                  initialDisplacementMTotal={rlBaseline.initialDisplacementMTotal}
+                  plannerWallS={rlBaseline.plannerWallS}
+                />
+              )}
             </div>
           ) : (
-            sim.meta && (
-              <div className="text-sm text-muted truncate">
-                {sim.meta.scenario} · {freqLabel(sim.meta.frequency)} · {nodes.length} nodes
-              </div>
-            )
+            <>
+              {baselineManifest !== undefined && (
+                <div className="text-sm text-ink-2 mt-1">
+                  {baselineIdentityLabel(
+                    baselineManifest?.method ?? null,
+                    baselineManifest?.objective ?? null
+                  )}
+                  {baselineManifest === null && ' · manifest unreadable'}
+                </div>
+              )}
+              {sim.meta && (
+                <div className="text-sm text-muted truncate">
+                  {sim.meta.scenario} · {freqLabel(sim.meta.frequency)} · {nodes.length} nodes
+                </div>
+              )}
+              {baselineManifest && (
+                <BaselineSetupLine
+                  initialDisplacementMTotal={baselineManifest.initialDisplacementMTotal}
+                  plannerWallS={baselineManifest.plannerWallS}
+                />
+              )}
+            </>
           )}
         </div>
         <div className="ml-auto flex items-center gap-2 flex-shrink-0">
@@ -320,6 +403,14 @@ export function PlayerPage({
                 <Section title="Links">
                   <LinkLegend />
                 </Section>
+
+                {baseline && (
+                  <BaselineProvenance
+                    manifest={baseline.meta.manifest}
+                    manifestError={baseline.meta.manifestError}
+                    plan={plan}
+                  />
+                )}
 
                 {sim.jammers.length > 0 && (
                   <Section title={`Jammers (${sim.jammers.length})`}>

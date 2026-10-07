@@ -20,6 +20,10 @@ function makeTree() {
   write('outputs/exp/train/row-a/train-seed-101/train_manifest.json', '{}')
   write('outputs/exp/train/row-a/train-seed-101/episode-0003/seed-101/links.csv')
   write('outputs/exp/train/row-a/train-seed-101/model.zip')
+  write('outputs/2026-09/30/12-00-00-baseline/baseline_manifest.json', '{}')
+  write('outputs/2026-09/30/12-00-00-baseline/effective-inputs/baseline-plan.json', '{}')
+  write('outputs/2026-09/30/12-00-00-baseline/planner.log')
+  write('outputs/2026-09/30/12-00-00-baseline/sim.log')
   write('outputs-old/x')
   write('secret/links.csv')
   fs.symlinkSync(path.join(base, 'secret', 'links.csv'), path.join(root, 'exp', 'leak.csv'))
@@ -49,6 +53,8 @@ test('listing is filtered, skips train rollouts and symlinks, and is capped', (t
 
   const { paths, truncated } = listOutputs(root)
   assert.deepEqual(paths, [
+    '2026-09/30/12-00-00-baseline/baseline_manifest.json',
+    '2026-09/30/12-00-00-baseline/effective-inputs/baseline-plan.json',
     'exp/eval/row-a/train-seed-101/model/episode-0000/seed-301/links.csv',
     'exp/eval/row-a/train-seed-101/model/episode-0000/steps.jsonl',
     'exp/eval/train/train-seed-101/model/episode-0000/seed-301/links.csv',
@@ -56,6 +62,7 @@ test('listing is filtered, skips train rollouts and symlinks, and is capped', (t
     'exp/train/row-a/train-seed-101/train_manifest.json',
   ])
   assert.equal(truncated, false)
+  assert.ok(!paths.some((p) => p.endsWith('planner.log') || p.endsWith('sim.log')))
 
   const capped = listOutputs(root, 2)
   assert.equal(capped.paths.length, 2)

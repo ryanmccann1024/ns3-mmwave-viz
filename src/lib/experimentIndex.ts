@@ -1,6 +1,15 @@
 import type { ResultCatalog } from './resultCatalog.ts'
 import { checkComparison } from './comparisonView.ts'
 import type { RawComparison } from './comparisonView.ts'
+import {
+  compareScenarioIdentity,
+  numberOrNull,
+  parseBaselineManifest,
+  resolveRef,
+  sanitizeLabel,
+  sanitizeText,
+} from './baselineManifest.ts'
+import type { BaselineManifest, IdentityCheck, ScenarioIdentity } from './baselineManifest.ts'
 
 // Index of an experiment folder built from small manifests only. Every path is
 // catalog-relative; absolute paths recorded in manifests are never dereferenced.
@@ -76,6 +85,34 @@ export interface Episode {
   message: string | null
 }
 
+/** A placement-baseline policy's `policies[name].baseline` block, plus its referenced manifest. */
+export interface EvalBaselineInfo {
+  method: string | null
+  requestedAlgorithm: string | null
+  objective: string | null
+  executor: string | null
+  plannerSeed: number | null
+  maxIterations: number | null
+  fingerprint: string | null
+  initialDisplacementMTotal: number | null
+  effectiveScenarioIdentity: ScenarioIdentity | null
+  plannerSourceSha256: string | null
+  rfConfigSha256: string | null
+  mappingSha256: string | null
+  /** resolveRef(evalDir, block.manifest) */
+  manifestPath: string | null
+  /** resolveRef(evalDir, block.plan); never read at load time */
+  planPath: string | null
+  /** loaded only when manifestPath is in the catalog */
+  manifest: BaselineManifest | null
+  /** 'unresolvable reference' | 'not in catalog' | 'unreadable' | parse reason */
+  manifestError: string | null
+  /** manifest?.plannerWallS ?? null */
+  plannerWallS: number | null
+  /** eval scenario_identity vs the manifest's source identity; null unless both exist */
+  sourceIdentityCheck: IdentityCheck | null
+}
+
 export interface Evaluation {
   /** `${label}#${trainingSeed}` */
   key: string
@@ -108,6 +145,8 @@ export interface Evaluation {
   policySummaries: Record<string, unknown>
   policies: string[]
   episodes: Episode[]
+  /** by policy name; only policies whose block carries a baseline object */
+  baselines: Record<string, EvalBaselineInfo>
 }
 
 export interface PlanRow {
@@ -272,6 +311,7 @@ function emptyEvaluation(label: string, trainingSeed: number | null, evalDir: st
     policySummaries: {},
     policies: [],
     episodes: [],
+    baselines: {},
   }
 }
 
@@ -375,6 +415,75 @@ function applyManifest(evaluation: Evaluation, m: Rec) {
   } else {
     evaluation.state = 'ok'
     evaluation.message = null
+  }
+}
+
+const HASH_MAX = 128
+
+/** A scenario identity object; null when absent or when it records no hash at all. */
+function identityOf(v: unknown): ScenarioIdentity | null {
+  if (!isRec(v)) return null
+  const identity: ScenarioIdentity = {
+    runIniSha256: sanitizeText(v.run_ini_sha256, HASH_MAX),
+    nodesJsonSha256: sanitizeText(v.nodes_json_sha256, HASH_MAX),
+    buildingsJsonSha256: sanitizeText(v.buildings_json_sha256, HASH_MAX),
+    jammersJsonSha256: sanitizeText(v.jammers_json_sha256, HASH_MAX),
+  }
+  return Object.values(identity).some((h) => h !== null) ? identity : null
+}
+
+/**
+ * Builds a policy's baseline info. Only the block's `manifest` reference is read, and
+ * only when it resolves inside the catalog; the referenced manifest's own path fields
+ * (eval_manifest, logs, inputs, host paths) are never followed. Never throws.
+ */
+async function loadEvalBaseline(
+  catalog: ResultCatalog,
+  evalDir: string,
+  block: Rec,
+  evalIdentity: ScenarioIdentity | null
+): Promise<EvalBaselineInfo> {
+  const manifestPath = resolveRef(evalDir, block.manifest)
+  let manifest: BaselineManifest | null = null
+  let manifestError: string | null = null
+  if (manifestPath === null) manifestError = 'unresolvable reference'
+  else if (!catalog.has(manifestPath)) manifestError = 'not in catalog'
+  else {
+    try {
+      const file = await catalog.getFile(manifestPath)
+      if (!file) manifestError = 'not in catalog'
+      else {
+        const parsed = parseBaselineManifest(await file.text())
+        if (parsed.ok) manifest = parsed.value
+        else manifestError = parsed.reason
+      }
+    } catch {
+      manifestError = 'unreadable'
+    }
+  }
+  // Compare with the source identity only: the effective identity differs by design
+  // once the planner has moved nodes.
+  const sourceIdentity = manifest?.sourceScenarioIdentity ?? null
+  return {
+    method: sanitizeLabel(block.method),
+    requestedAlgorithm: sanitizeLabel(block.requested_algorithm),
+    objective: sanitizeLabel(block.objective),
+    executor: sanitizeLabel(block.executor),
+    plannerSeed: numberOrNull(block.planner_seed),
+    maxIterations: numberOrNull(block.max_iterations),
+    fingerprint: sanitizeText(block.fingerprint, HASH_MAX),
+    initialDisplacementMTotal: numberOrNull(block.initial_displacement_m_total),
+    effectiveScenarioIdentity: identityOf(block.effective_scenario_identity),
+    plannerSourceSha256: sanitizeText(block.planner_source_sha256, HASH_MAX),
+    rfConfigSha256: sanitizeText(block.rf_config_sha256, HASH_MAX),
+    mappingSha256: sanitizeText(block.mapping_sha256, HASH_MAX),
+    manifestPath,
+    planPath: resolveRef(evalDir, block.plan),
+    manifest,
+    manifestError,
+    plannerWallS: manifest?.plannerWallS ?? null,
+    sourceIdentityCheck:
+      evalIdentity && sourceIdentity ? compareScenarioIdentity(evalIdentity, sourceIdentity) : null,
   }
 }
 
@@ -514,9 +623,19 @@ export async function loadExperiment(catalog: ResultCatalog, root: string): Prom
     }
     evaluation.evalDir = evalDir
     applyManifest(evaluation, data)
+    const evalIdentity = identityOf(data.scenario_identity)
     for (const [policy, block] of Object.entries(rec(data.policies))) {
       evaluation.policies.push(policy)
       evaluation.policySummaries[policy] = rec(block).summary ?? null
+      const baseline = rec(block).baseline
+      if (isRec(baseline)) {
+        evaluation.baselines[policy] = await loadEvalBaseline(
+          catalog,
+          evaluation.evalDir,
+          baseline,
+          evalIdentity
+        )
+      }
       const entries = rec(block).episodes
       for (const entry of (Array.isArray(entries) ? entries : []).filter(isRec)) {
         evaluation.episodes.push(
@@ -634,7 +753,7 @@ export async function readPlaybackFiles(
   }
 }
 
-const POLICY_ORDER = ['model', 'hold', 'random_valid']
+const POLICY_ORDER = ['model', 'hold', 'random_valid', 'geometric', 'optimization']
 
 /** Episodes of every policy for one held-out seed, matched by seed value only. */
 export function matchingEpisodes(evaluation: Evaluation, seed: number): Episode[] {
