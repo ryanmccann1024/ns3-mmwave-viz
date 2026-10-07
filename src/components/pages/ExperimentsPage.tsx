@@ -3,7 +3,7 @@ import type { Workspace } from '../../hooks/useWorkspace'
 import { folderLabel, groupExperimentRoots, groupProjects } from '../../lib/format'
 import { experimentLabel } from '../../lib/rlLabels'
 import { ExperimentCard, TrainingCard } from './ExperimentCard'
-import { ListEmpty } from './shared'
+import { ListEmpty, NoFolder } from './shared'
 import { MOTION } from '../../styles/motion'
 
 interface Props {
@@ -84,12 +84,16 @@ export function ExperimentsPage({ workspace, onOpenGroup, onOpenTrainingRun }: P
         )}
       </header>
 
-      {(empty || shown.length === 0) && (
-        <div className={`glass ${MOTION.enterFade}`}>
-          <ListEmpty>
-            {empty ? 'No RL experiments or training runs yet.' : 'Nothing matches that filter.'}
-          </ListEmpty>
-        </div>
+      {!workspace.dirName && !workspace.loadingDir ? (
+        <NoFolder what="RL experiments" onOpen={workspace.openFolder} />
+      ) : (
+        (empty || shown.length === 0) && (
+          <div className={`glass ${MOTION.enterFade}`}>
+            <ListEmpty>
+              {empty ? 'No RL experiments or training runs yet.' : 'Nothing matches that filter.'}
+            </ListEmpty>
+          </div>
+        )
       )}
 
       {/* Keyed on the filter so a new result set fades in as a whole */}

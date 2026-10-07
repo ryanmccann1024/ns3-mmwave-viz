@@ -6,6 +6,7 @@ import { truncateText } from './BaselineInfo'
 import {
   GroupSection,
   ListEmpty,
+  NoFolder,
   ScenarioCard,
   groupRuns,
   groupScenarios,
@@ -82,12 +83,16 @@ export function RunsPage({ workspace, onOpenRun }: Props) {
         </div>
       )}
 
-      {batches.length === 0 && (
-        <div className={`glass ${MOTION.enterFade}`}>
-          <ListEmpty>
-            {empty ? 'No simulation runs yet.' : 'Nothing matches that filter.'}
-          </ListEmpty>
-        </div>
+      {!workspace.dirName && !workspace.loadingDir ? (
+        <NoFolder what="simulation runs" onOpen={workspace.openFolder} />
+      ) : (
+        batches.length === 0 && (
+          <div className={`glass ${MOTION.enterFade}`}>
+            <ListEmpty>
+              {empty ? 'No simulation runs yet.' : 'Nothing matches that filter.'}
+            </ListEmpty>
+          </div>
+        )
       )}
 
       {/* Keyed on the filter so a new result set fades in as a whole, never row by row */}

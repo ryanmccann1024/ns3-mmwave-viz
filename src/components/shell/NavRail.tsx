@@ -149,7 +149,7 @@ export function NavRail({ active, onNavigate, workspace }: Props) {
           variant="secondary"
           onClick={workspace.openFolder}
           disabled={workspace.loadingDir}
-          className="w-full !py-2.5 !text-base"
+          className="w-full"
         >
           {hasFolder ? 'Change folder' : 'Open folder'}
         </Button>

@@ -92,29 +92,40 @@ function evaluationCounts(paths: string[], roots: ExperimentRoot[]): Map<string,
 /** First screen: open a folder, or a quiet spinner while one is being read */
 function Welcome({ loading, onOpen }: { loading: boolean; onOpen: () => void }) {
   return (
-    <div className="flex-1 flex items-center justify-center px-6 py-16">
-      <div className="w-full max-w-md flex flex-col items-center text-center">
-        <BrandMark size={72} />
-        <h1 className="mt-8 text-4xl sm:text-5xl font-semibold tracking-tight text-ink-title">
+    <div className="flex-1 flex items-center justify-center px-4 py-12">
+      <div
+        className={`glass w-full max-w-lg px-8 py-12 sm:px-12 sm:py-14 flex flex-col items-center text-center ${MOTION.enter}`}
+      >
+        <BrandMark size={64} />
+        <h1 className="mt-6 text-4xl sm:text-5xl font-semibold tracking-tight text-ink-title">
           mmWave Viz
         </h1>
-        {loading ? (
-          <div className="mt-12 flex flex-col items-center gap-5" role="status" aria-live="polite">
+        {/* Keyed on the state so the loading and ready contents cross-fade */}
+        <div key={loading ? 'loading' : 'ready'} className={`w-full ${MOTION.enterFade}`}>
+          {loading ? (
             <div
-              className="w-9 h-9 rounded-full border-[3px] border-accent/20 border-t-accent animate-spin"
-              aria-hidden="true"
-            />
-            <p className="text-lg text-muted">Loading simulations</p>
-          </div>
-        ) : (
-          <>
-            <p className="mt-4 text-lg text-muted">Open your outputs folder to begin.</p>
-            <Button variant="primary" onClick={onOpen} className="mt-10 !px-8 !py-3.5 !text-base">
-              Open folder
-            </Button>
-            <p className="mt-6 text-sm text-faint font-mono">scratch/mesh-sim/outputs</p>
-          </>
-        )}
+              className="mt-10 flex flex-col items-center gap-4"
+              role="status"
+              aria-live="polite"
+            >
+              <div
+                className="w-10 h-10 rounded-full border-[3px] border-accent/20 border-t-accent animate-spin"
+                aria-hidden="true"
+              />
+              <p className="text-lg font-medium text-ink-2">Loading simulations</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <p className="mt-4 text-lg text-ink-2">Open your outputs folder to begin.</p>
+              <Button variant="secondary" onClick={onOpen} className="mt-8 !h-12 !px-8 !text-lg">
+                Open folder
+              </Button>
+              <p className="mt-6 text-base text-ink-2">
+                Usually <span className="font-mono text-ink">scratch/mesh-sim/outputs</span>
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

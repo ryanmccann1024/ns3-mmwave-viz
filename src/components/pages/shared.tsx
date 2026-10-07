@@ -146,7 +146,21 @@ export function GroupSection({
 }
 
 export function ListEmpty({ children }: { children: ReactNode }) {
-  return <div className="px-6 py-8 text-base text-ink-2">{children}</div>
+  return <div className="px-6 py-8 text-lg text-ink-2">{children}</div>
+}
+
+/** Shown on a list page before any outputs folder is open: what to do, and the way to do it */
+export function NoFolder({ what, onOpen }: { what: string; onOpen: () => void }) {
+  return (
+    <div
+      className={`glass px-6 py-6 flex items-center justify-between gap-4 flex-wrap ${MOTION.enterFade}`}
+    >
+      <span className="text-lg text-ink-2">Open your outputs folder to see {what}.</span>
+      <Button variant="secondary" onClick={onOpen}>
+        Open folder
+      </Button>
+    </div>
+  )
 }
 
 function BuildingsIcon() {
