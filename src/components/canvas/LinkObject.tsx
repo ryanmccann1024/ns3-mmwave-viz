@@ -1,8 +1,9 @@
 import { useRef, useMemo, useLayoutEffect } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
 import type { LinkState, NodeState } from '../../types'
-import { simToThree } from './utils/coordinates'
+import { lerpNodeToThree, simToThree } from './utils/coordinates'
 import { linkColor } from './utils/linkColors'
 
 // We use a raw THREE.Line with LineDashedMaterial so positions can be
@@ -28,9 +29,9 @@ export function LinkObject({
   link,
   nodeA,
   nodeB,
-  nextA: _nextA,
-  nextB: _nextB,
-  alphaRef: _alphaRef,
+  nextA,
+  nextB,
+  alphaRef,
   selected,
   highlighted,
   dimmed,
@@ -53,11 +54,13 @@ export function LinkObject({
     return new THREE.Line(g)
   }, [])
 
-  // Update line endpoints when node positions change (per frame tick, not 60fps)
-  useLayoutEffect(() => {
+  // Endpoints follow the nodes as they glide between saved frames: set on every commit (so a
+  // paused or seeked frame is right immediately) and on every animation frame while playing
+  const place = () => {
     if (!lineRef.current) return
-    const posA = simToThree(nodeA.x, nodeA.y, nodeA.z, dim, posScale)
-    const posB = simToThree(nodeB.x, nodeB.y, nodeB.z, dim, posScale)
+    const alpha = alphaRef.current
+    const posA = lerpNodeToThree(nodeA, nextA, alpha, dim, posScale)
+    const posB = lerpNodeToThree(nodeB, nextB, alpha, dim, posScale)
     const arr = lineRef.current.geometry.attributes.position.array as Float32Array
     arr[0] = posA[0]
     arr[1] = posA[1]
@@ -78,7 +81,9 @@ export function LinkObject({
         (posA[2] + posB[2]) / 2
       )
     }
-  })
+  }
+  useLayoutEffect(place)
+  useFrame(place)
 
   return (
     <group>

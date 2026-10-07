@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import type { MutableRefObject } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { SimFrame } from '../../types'
 import {
   useMetricSeries,
@@ -13,6 +14,8 @@ import { MOTION } from '../../styles/motion'
 interface Props {
   frames: SimFrame[]
   frameIndex: number
+  /** 0..1 progress toward the next frame, advanced every animation frame */
+  frameAlphaRef?: MutableRefObject<number>
   selectedLink: string | null
   onSelectLink: (key: string) => void
   /** a preferred metric carried across compatible episodes; used only when this run has it */
@@ -23,6 +26,7 @@ interface Props {
 export function ChartsView({
   frames,
   frameIndex,
+  frameAlphaRef,
   selectedLink,
   onSelectLink,
   preferredMetric,
@@ -40,7 +44,13 @@ export function ChartsView({
   const setSelectedMetric = (metric: MetricId) => setChosenMetric(metric)
   const series = useMetricSeries(frames, selectedMetric)
   const config = METRICS.find((m) => m.id === selectedMetric)!
-  const currentTime = frames[frameIndex]?.time ?? 0
+  // Read by the chart every animation frame: the frame time plus how far toward the next one
+  const playheadTime = useCallback(() => {
+    const a = frames[frameIndex]?.time ?? 0
+    const b = frames[frameIndex + 1]?.time
+    const alpha = frameAlphaRef?.current ?? 0
+    return b === undefined ? a : a + (b - a) * alpha
+  }, [frames, frameIndex, frameAlphaRef])
 
   return (
     <div className="glass flex flex-col h-full overflow-hidden">
@@ -66,7 +76,7 @@ export function ChartsView({
         <MetricChart
           series={series}
           config={config}
-          currentTime={currentTime}
+          playheadTime={playheadTime}
           selectedKey={selectedLink}
           onSelectKey={onSelectLink}
         />

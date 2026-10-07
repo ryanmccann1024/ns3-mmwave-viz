@@ -818,6 +818,7 @@ export function PlayerPage({
               <ChartsView
                 frames={sim.frames}
                 frameIndex={sim.frameIndex}
+                frameAlphaRef={sim.frameAlphaRef}
                 selectedLink={selectedLink}
                 onSelectLink={selectLink}
                 preferredMetric={preferences.metric}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   LineChart,
   Line,
@@ -6,7 +6,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
 import type { MetricSeries, MetricConfig } from '../../hooks/useMetricSeries'
@@ -29,12 +28,18 @@ const LINK_PALETTE = [
 interface Props {
   series: MetricSeries[]
   config: MetricConfig
-  currentTime: number
+  /** the playback time right now, read every animation frame (moves between saved frames) */
+  playheadTime: () => number
   selectedKey: string | null
   onSelectKey: (key: string) => void
 }
 
-export function MetricChart({ series, config, currentTime, selectedKey, onSelectKey }: Props) {
+// Plot-area geometry, matching the LineChart margins and axis sizes below
+const MARGIN = { top: 12, right: 24, left: 4, bottom: 4 }
+const Y_AXIS_WIDTH = 56
+const X_AXIS_HEIGHT = 30
+
+export function MetricChart({ series, config, playheadTime, selectedKey, onSelectKey }: Props) {
   const { chartData, keys } = useMemo(() => {
     const timeMap = new Map<number, Record<string, number>>()
     const ks = series.map((s) => s.key)
@@ -54,6 +59,33 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
     return { chartData: data, keys: ks }
   }, [series])
 
+  // The "now" line is drawn over the plot and moved every animation frame, so it slides
+  // continuously instead of stepping once per saved frame like a chart re-render would
+  const plotRef = useRef<HTMLDivElement>(null)
+  const playheadRef = useRef<HTMLDivElement>(null)
+  const timeRef = useRef(playheadTime)
+  useEffect(() => {
+    timeRef.current = playheadTime
+  }, [playheadTime])
+  const t0 = chartData.length ? chartData[0].time : 0
+  const t1 = chartData.length ? chartData[chartData.length - 1].time : 0
+  useEffect(() => {
+    let raf = 0
+    const draw = () => {
+      const plot = plotRef.current
+      const line = playheadRef.current
+      if (plot && line) {
+        const left = MARGIN.left + Y_AXIS_WIDTH
+        const width = plot.clientWidth - left - MARGIN.right
+        const p = t1 > t0 ? (timeRef.current() - t0) / (t1 - t0) : 0
+        line.style.transform = `translateX(${left + Math.min(1, Math.max(0, p)) * width}px)`
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(raf)
+  }, [t0, t1])
+
   if (series.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-ink-2 text-base">
@@ -68,9 +100,15 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 min-h-0">
+      <div ref={plotRef} className="relative flex-1 min-h-0">
+        <div
+          ref={playheadRef}
+          aria-hidden="true"
+          className="absolute left-0 w-0 border-l-2 border-dashed border-accent pointer-events-none z-10"
+          style={{ top: MARGIN.top, bottom: MARGIN.bottom + X_AXIS_HEIGHT }}
+        />
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+          <LineChart data={chartData} margin={MARGIN}>
             <CartesianGrid vertical={false} stroke={GRID} />
             <XAxis
               dataKey="time"
@@ -82,7 +120,7 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
             <YAxis
               {...AXIS}
               axisLine={false}
-              width={56}
+              width={Y_AXIS_WIDTH}
               tickFormatter={(v: number) => Number(v.toFixed(1)).toLocaleString()}
             />
             <Tooltip
@@ -99,13 +137,6 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
                 `${keyPrefix}${name}`,
               ]}
               labelFormatter={(label) => `${Number(label).toFixed(1)} s`}
-            />
-
-            <ReferenceLine
-              x={currentTime}
-              stroke="#1e63e9"
-              strokeWidth={1.5}
-              strokeDasharray="4 2"
             />
 
             {keys.map((key, i) => {
