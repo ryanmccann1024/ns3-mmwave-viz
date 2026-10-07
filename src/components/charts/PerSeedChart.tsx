@@ -13,6 +13,9 @@ import {
 import type { Evaluation } from '../../lib/experimentIndex'
 import { shortNumber } from '../../lib/format'
 import { trailColor } from '../../styles/tokens'
+import { AXIS, GRID } from './chartStyle'
+import { Legend } from './RlCharts'
+import { policyLabel } from '../../lib/rlLabels'
 import { Segmented } from '../ui/Segmented'
 
 interface Point {
@@ -94,14 +97,17 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
   const yTicks: number[] = []
   for (let t = yMin; t <= yMax + step / 2; t += step) yTicks.push(Number(t.toPrecision(12)))
 
+  // Ratios read as percentages; returns stay as numbers
+  const ratio = metric !== 'return' && lo >= 0 && hi <= 1
+  const formatY = (v: number) => (ratio ? `${Math.round(v * 100)}%` : shortNumber(v))
+
   if (seeds.length === 0) return null
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3 flex-wrap">
-        <h3 className="text-base font-semibold text-ink-title">Same-seed policy comparison</h3>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <Segmented
-          size="sm"
+          size="lg"
           options={[
             { value: 'return', label: 'Return' },
             ...chartable.map((k) => ({ value: k, label: label(k) })),
@@ -109,26 +115,9 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
           value={metric}
           onChange={setMetric}
         />
-        <div className="ml-auto flex items-center gap-3">
-          {policies.map((p) => (
-            <span key={p} className="flex items-center gap-1.5 text-sm text-ink-2">
-              <span
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: trailColor(p) }}
-              />
-              {p}
-            </span>
-          ))}
-        </div>
       </div>
-      <details className="text-sm text-muted">
-        <summary className="cursor-pointer hover:text-ink">How to read this chart</summary>
-        <p className="pt-2">
-          Each seed is one simulator condition shared by all policies. Left-to-right seed order is
-          not time or learning progress.
-        </p>
-      </details>
-      <div className="h-56">
+      <Legend items={policies.map((p) => ({ label: policyLabel(p), color: trailColor(p) }))} />
+      <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
             {/* alternate seed bands, so each seed's dots read as one group */}
@@ -145,7 +134,7 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
                 />
               ) : null
             )}
-            <CartesianGrid vertical={false} stroke="rgba(10,19,36,0.07)" />
+            <CartesianGrid vertical={false} stroke={GRID} />
             <ZAxis range={[110, 110]} />
             <XAxis
               type="number"
@@ -153,22 +142,17 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
               domain={[-0.5, seeds.length - 0.5]}
               ticks={seeds.map((_, i) => i)}
               tickFormatter={(i: number) => `Seed ${seeds[i]}`}
-              tickLine={false}
-              axisLine={{ stroke: 'rgba(10,19,36,0.15)' }}
-              fontSize={11}
-              stroke="#6a7b96"
+              {...AXIS}
             />
             <YAxis
               type="number"
               dataKey="y"
-              domain={[yMin, yMax]}
-              ticks={yTicks}
-              tickFormatter={(v: number) => shortNumber(v)}
-              tickLine={false}
+              domain={ratio ? [Math.max(yMin, -0.04), Math.min(yMax, 1.04)] : [yMin, yMax]}
+              ticks={ratio ? yTicks.filter((t) => t >= 0 && t <= 1) : yTicks}
+              tickFormatter={formatY}
+              {...AXIS}
               axisLine={false}
-              fontSize={11}
-              stroke="#6a7b96"
-              width={48}
+              width={60}
             />
             <Tooltip
               cursor={false}
@@ -176,19 +160,18 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
                 const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined
                 if (!p) return null
                 return (
-                  <div className="glass-chip px-3 py-2 text-xs">
+                  <div className="glass-chip px-3 py-2 text-sm">
                     <div className="flex items-center gap-1.5 font-medium text-ink">
                       <span
                         className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: trailColor(p.policy) }}
                       />
-                      {p.policy} · seed {p.seed}
+                      {policyLabel(p.policy)} · seed {p.seed}
                     </div>
                     <div className="text-ink-2 mt-0.5">
                       {metric === 'return' ? 'Return' : label(metric)}{' '}
-                      <span className="font-mono tabular-nums">{shortNumber(p.y)}</span>
+                      <span className="tabular-nums font-medium text-ink">{formatY(p.y)}</span>
                     </div>
-                    <div className="text-muted">{p.episode}</div>
                   </div>
                 )
               }}
@@ -209,13 +192,13 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
         </ResponsiveContainer>
       </div>
       {evaluation.policies.includes('model') && metricKeys.includes('delivery_ratio') && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 pt-2 border-t border-ink/[0.06]">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pt-4 border-t border-hairline">
           {['hold', 'random_valid']
             .filter((baseline) => evaluation.policies.includes(baseline))
             .map((baseline) => (
-              <div key={baseline} className="tile p-3">
-                <div className="text-sm font-semibold text-ink mb-3">
-                  Delivery advantage: model − {baseline}
+              <div key={baseline} className="tile p-5">
+                <div className="text-lg font-semibold text-ink-title mb-4">
+                  Delivered: model vs {policyLabel(baseline).toLowerCase()}
                 </div>
                 {seeds.map((seed) => {
                   const model = evaluation.episodes.find(
@@ -228,8 +211,8 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
                     typeof model === 'number' && typeof base === 'number' ? model - base : null
                   const width = delta === null ? 0 : Math.min(50, Math.abs(delta) * 50)
                   return (
-                    <div key={seed} className="flex items-center gap-2 text-sm mb-2">
-                      <span className="w-14 text-muted">{seed}</span>
+                    <div key={seed} className="flex items-center gap-3 text-base mb-2.5">
+                      <span className="w-20 text-ink-2">Seed {seed}</span>
                       <div className="relative h-3 flex-1 rounded bg-white/70">
                         <div className="absolute left-1/2 top-0 bottom-0 w-px bg-ink/30" />
                         {delta !== null && (
@@ -244,7 +227,7 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
                         )}
                       </div>
                       <span
-                        className={`w-16 text-right tabular-nums ${delta !== null && delta < 0 ? 'text-rose-700' : 'text-emerald-800'}`}
+                        className={`w-20 text-right font-medium tabular-nums ${delta !== null && delta < 0 ? 'text-rose-700' : 'text-emerald-800'}`}
                       >
                         {delta === null
                           ? 'n/a'
@@ -253,9 +236,6 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
                     </div>
                   )
                 })}
-                <div className="text-sm text-muted mt-3">
-                  Right of center favors the model; left favors {baseline}. pp = percentage points.
-                </div>
               </div>
             ))}
         </div>

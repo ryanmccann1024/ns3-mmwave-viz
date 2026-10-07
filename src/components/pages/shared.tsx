@@ -1,12 +1,11 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { RunEntry } from '../../lib/assembleRuns'
-import type { BaselineRun } from '../../lib/baselineRuns'
-import { unmatchedSeedRecords } from '../../lib/baselineRuns'
-import type { ExperimentRoot } from '../../lib/experimentIndex'
 import type { Scenario } from '../../lib/scenarioGroups'
-import { folderLabel } from '../../lib/format'
-import { experimentLabel } from '../../lib/rlLabels'
-import { BaselineBadges, BaselineSetupLine, truncateText } from './BaselineInfo'
+import { scenarioLabel } from '../../lib/format'
+import { policyLabel } from '../../lib/rlLabels'
+import { Button, SECONDARY_BUTTON } from '../ui/Button'
+import { RunPreviewPanel } from './RunPreviewPanel'
+import { ScenarioScene } from './ScenarioScene'
 import { MOTION } from '../../styles/motion'
 
 export { groupRuns, groupScenarios, unplayableForBatch } from '../../lib/scenarioGroups'
@@ -36,172 +35,224 @@ export function Tag({
   )
 }
 
-const seedNumber = (seed: string) => seed.replace(/^seed-/, '')
+// ---------------------------------------------------------------------------
+// Large list cards shared by Home and Simulation runs
+// ---------------------------------------------------------------------------
 
-const ERROR_MAX = 120
+/** One row height everywhere, so side-by-side cards line up row for row */
+export const LIST_ROW = 'w-full h-16 flex items-center gap-4 px-6 text-left last:rounded-b-2xl'
 
-/** The standalone baseline behind a playable scenario, rebuilt from its seeds' metadata if needed */
-function playableBaseline(scenario: Scenario): BaselineRun | null {
-  if (scenario.baseline) return scenario.baseline
-  const first = scenario.runs[0]
-  const meta = first?.baseline
-  if (!meta) return null
-  return {
-    runDir: meta.runDir,
-    yearMonth: first.yearMonth,
-    day: first.day,
-    time: first.time,
-    manifestPath: `${meta.runDir}/baseline_manifest.json`,
-    manifest: meta.manifest,
-    manifestError: meta.manifestError,
-    planPath: meta.planPath,
-  }
-}
-
-/** A baseline run that produced no telemetry: status only, nothing to open */
-function UnplayableScenarioRow({
-  scenario,
-  baseline,
-  showBatch,
+/** A glass card with a large title, optional right-hand content, and divided rows */
+export function ListCard({
+  title,
+  aside,
+  showAll,
+  onShowAll,
+  children,
 }: {
-  scenario: Scenario
-  baseline: BaselineRun | undefined
-  showBatch?: boolean
+  title: ReactNode
+  /** quiet text on the right of the header */
+  aside?: ReactNode
+  showAll?: boolean
+  onShowAll?: () => void
+  children: ReactNode
 }) {
-  const manifest = baseline?.manifest ?? null
-  const detail = manifest
-    ? manifest.error
-      ? truncateText(manifest.error, ERROR_MAX)
-      : null
-    : 'manifest unreadable'
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-xl">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-ink truncate">{scenario.name}</span>
-          <BaselineBadges
-            compact
-            method={manifest?.method ?? null}
-            objective={manifest?.objective ?? null}
-            status={manifest?.status ?? null}
-            manifestError={manifest ? null : (baseline?.manifestError ?? 'unreadable')}
-          />
-        </div>
-        {showBatch && <div className="text-[11px] text-muted truncate">{scenario.batch}</div>}
-        {detail && <div className="text-[11px] text-muted truncate">{detail}</div>}
+    <section className="glass flex flex-col min-w-0">
+      <header className="h-20 flex items-center justify-between gap-4 px-6">
+        <h2 className="text-xl font-semibold tracking-tight text-ink-title truncate">{title}</h2>
+        {aside && <span className="flex-shrink-0 text-base text-ink-2 tabular-nums">{aside}</span>}
+        {showAll && onShowAll && (
+          <Button variant="secondary" onClick={onShowAll}>
+            View all
+          </Button>
+        )}
+      </header>
+      <div className="flex flex-col divide-y divide-hairline border-t border-hairline">
+        {children}
       </div>
-      <span className="text-[11px] text-muted flex-shrink-0">No playable telemetry</span>
-    </div>
+    </section>
   )
 }
 
-/** One scenario: its name, then one button per seed */
-export function ScenarioRow({
-  scenario,
-  onOpen,
-  showBatch,
+/**
+ * A folder of cards that folds to a single bar. Children mount on first open (a folded group
+ * reads none of its data) and then stay mounted, so both opening and closing animate.
+ */
+export function GroupSection({
+  title,
+  meta,
+  defaultOpen = false,
+  children,
 }: {
-  scenario: Scenario
-  onOpen: (run: RunEntry) => void
-  showBatch?: boolean
+  title: ReactNode
+  /** quiet detail beside the toggle, e.g. a count */
+  meta?: ReactNode
+  defaultOpen?: boolean
+  children: ReactNode
 }) {
-  if (scenario.runs.length === 0) {
-    return (
-      <UnplayableScenarioRow
-        scenario={scenario}
-        baseline={scenario.baseline}
-        showBatch={showBatch}
-      />
-    )
+  const [open, setOpen] = useState(defaultOpen)
+  const [mounted, setMounted] = useState(defaultOpen)
+  const toggle = () => {
+    setMounted(true)
+    setOpen((o) => !o)
   }
-
-  const baseline = scenario.runs[0].baseline ? playableBaseline(scenario) : null
-  const manifest = baseline?.manifest ?? null
-  const missingSeeds = baseline
-    ? unmatchedSeedRecords(
-        baseline,
-        scenario.runs.map((run) => Number(seedNumber(run.seed))).filter(Number.isFinite)
-      )
-    : []
-
   return (
-    <div
-      className={`flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/60 ${MOTION.colors}`}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-ink truncate">{scenario.name}</span>
-          {baseline && (
-            <BaselineBadges
-              compact
-              method={manifest?.method ?? null}
-              objective={manifest?.objective ?? null}
-              status={manifest?.status ?? null}
-              manifestError={manifest ? null : (baseline.manifestError ?? 'unreadable')}
-            />
+    <section className="flex flex-col">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            toggle()
+          }
+        }}
+        className={`glass w-full h-20 flex items-center gap-4 px-6 cursor-pointer hover:bg-white/80 ${MOTION.surface}`}
+      >
+        <span className="flex-1 min-w-0 text-xl font-semibold tracking-tight text-ink-title truncate">
+          {title}
+        </span>
+        {meta && (
+          <span className="hidden sm:inline flex-shrink-0 text-base text-ink-2 tabular-nums">
+            {meta}
+          </span>
+        )}
+        <span className={`flex-shrink-0 w-[4.5rem] ${SECONDARY_BUTTON}`}>
+          {open ? 'Hide' : 'Show'}
+        </span>
+      </div>
+      <div
+        className="grid transition-[grid-template-rows] duration-slow ease-standard"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {mounted && (
+            <div
+              className={`pt-4 pb-1 ${MOTION.fade} ${open ? 'opacity-100' : 'opacity-0'}`}
+              aria-hidden={!open}
+              // inert keeps Tab out of a folded group; React 18's types predate the attribute
+              {...({ inert: open ? undefined : '' } as Record<string, string | undefined>)}
+            >
+              {children}
+            </div>
           )}
         </div>
-        {showBatch && <div className="text-[11px] text-muted truncate">{scenario.batch}</div>}
-        {manifest && (
-          <BaselineSetupLine
-            initialDisplacementMTotal={manifest.initialDisplacementMTotal}
-            plannerWallS={manifest.plannerWallS}
-            className="text-[11px] text-muted truncate"
-          />
-        )}
-        {missingSeeds.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap mt-1">
-            {missingSeeds.map((record) => (
-              <Tag key={record.seed}>
-                seed {record.seed} ·{' '}
-                {record.status === 'complete'
-                  ? 'telemetry not found'
-                  : record.status === 'unknown'
-                    ? (record.rawStatus ?? 'unknown')
-                    : record.status}
-              </Tag>
-            ))}
-          </div>
-        )}
       </div>
-      {scenario.point && <Tag>{scenario.point}</Tag>}
-      {scenario.buildings && <Tag tone="good">buildings</Tag>}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="text-[11px] text-muted mr-1">Seed</span>
-        {scenario.runs.map((run) => (
+    </section>
+  )
+}
+
+export function ListEmpty({ children }: { children: ReactNode }) {
+  return <div className="px-6 py-8 text-base text-ink-2">{children}</div>
+}
+
+function BuildingsIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+      className="flex-shrink-0 text-ink-2"
+      role="img"
+      aria-label="Has buildings"
+    >
+      <title>Has buildings</title>
+      <path d="M4 21V5l8-2v18M12 21V9l8 3v9M2 21h20M7 8h2M7 12h2M7 16h2M15 14h2M15 17h2" />
+    </svg>
+  )
+}
+
+/** Joined group of seed buttons; `stretch` fills the width with equal buttons */
+function SeedButtons({
+  scenario,
+  title,
+  onOpen,
+  stretch = false,
+}: {
+  scenario: Scenario
+  title: string
+  onOpen: (run: RunEntry) => void
+  stretch?: boolean
+}) {
+  if (scenario.runs.length === 0) {
+    return <span className="flex-shrink-0 text-base text-ink-2">No playback</span>
+  }
+  return (
+    <div
+      className={`${stretch ? 'w-full' : 'flex-shrink-0'} flex rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-x divide-hairline`}
+    >
+      {scenario.runs.map((run) => {
+        const seed = run.seed.replace(/^seed-/, '')
+        return (
           <button
             key={run.key}
             type="button"
             onClick={() => onOpen(run)}
-            title={`Play ${scenario.name} ${run.seed}`}
-            className={`min-w-[1.75rem] h-7 px-1.5 rounded-lg text-xs font-medium tabular-nums bg-white border border-hairline text-ink-2 shadow-control hover:border-accent hover:text-accent-ink ${MOTION.colors}`}
+            title={`Play seed ${seed}`}
+            aria-label={`Play ${title} seed ${seed}`}
+            className={`${stretch ? 'flex-1 h-11' : 'min-w-10 h-10'} px-3 text-sm font-medium tabular-nums text-ink-2 hover:bg-accent-wash hover:text-accent-ink ${MOTION.colors}`}
           >
-            {seedNumber(run.seed)}
+            {seed}
           </button>
-        ))}
-      </div>
+        )
+      })}
     </div>
   )
 }
 
-/** One row in a list of RL experiment folders */
-export function ExperimentRow({ root, onOpen }: { root: ExperimentRoot; onOpen: () => void }) {
-  const { name, date } = folderLabel(root.root)
+/** Name, buildings icon and baseline method for one scenario */
+function ScenarioName({ scenario, title }: { scenario: Scenario; title: string }) {
+  const method = (scenario.baseline?.manifest ?? scenario.runs[0]?.baseline?.manifest)?.method
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-white/80 ${MOTION.colors}`}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="text-base font-semibold text-ink truncate">
-          {experimentLabel(name || 'This experiment')}
-        </div>
-        <div className="text-sm text-muted">
-          {date ? `${date} · ` : ''}Compare policies and watch replays
-        </div>
-      </div>
-      <Tag tone="accent">Open →</Tag>
-    </button>
+    <div className="flex-1 min-w-0 flex items-center gap-2">
+      <span className="text-lg font-medium text-ink truncate" title={scenario.name}>
+        {title}
+      </span>
+      {scenario.buildings && <BuildingsIcon />}
+      {method && <span className="flex-shrink-0 text-base text-ink-2">{policyLabel(method)}</span>}
+    </div>
+  )
+}
+
+/** One scenario as a list row: name, then a joined group of seed buttons */
+export function ScenarioItem({
+  scenario,
+  onOpen,
+}: {
+  scenario: Scenario
+  onOpen: (run: RunEntry) => void
+}) {
+  const { title } = scenarioLabel(scenario.name)
+  return (
+    <div className={LIST_ROW}>
+      <ScenarioName scenario={scenario} title={title} />
+      <SeedButtons scenario={scenario} title={title} onOpen={onOpen} />
+    </div>
+  )
+}
+
+/** One scenario as its own card: name on top, full-width seed buttons below */
+export function ScenarioCard({
+  scenario,
+  onOpen,
+}: {
+  scenario: Scenario
+  onOpen: (run: RunEntry) => void
+}) {
+  const { title } = scenarioLabel(scenario.name)
+  return (
+    <div className="glass p-6 flex flex-col gap-5 min-w-0">
+      <ScenarioScene run={scenario.runs[0]} />
+      <ScenarioName scenario={scenario} title={title} />
+      <RunPreviewPanel run={scenario.runs[0]} />
+      <SeedButtons scenario={scenario} title={title} onOpen={onOpen} stretch />
+    </div>
   )
 }

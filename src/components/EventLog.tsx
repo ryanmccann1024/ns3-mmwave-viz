@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import type { LogEntry } from '../types'
+import { Button } from './ui/Button'
 
 const LEVEL_DOT: Record<LogEntry['level'], string> = {
-  info: 'bg-faint',
+  info: 'bg-ink-2/40',
   event: 'bg-accent',
   warn: 'bg-amber-500',
   error: 'bg-rose-500',
@@ -24,24 +25,24 @@ export function EventLog({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
   }, [logs])
 
   return (
-    <div className="flex flex-col gap-2 text-xs">
-      <div className="flex items-center justify-between">
-        <span className="text-muted">{logs.length} events</span>
+    <div className="flex flex-col gap-2.5 text-base">
+      <div className="flex items-center justify-between gap-4 pb-1">
+        <span className="text-lg font-semibold tracking-tight text-ink-title">
+          {logs.length} {logs.length === 1 ? 'event' : 'events'}
+        </span>
         {logs.length > 0 && (
-          <button onClick={onClear} className="text-[11px] font-medium text-muted hover:text-ink">
+          <Button variant="secondary" onClick={onClear}>
             Clear
-          </button>
+          </Button>
         )}
       </div>
-      {logs.length === 0 && <div className="text-faint">No events yet. Press play to begin.</div>}
+      {logs.length === 0 && <div className="text-ink-2">No events yet. Press play to begin.</div>}
       {logs.map((entry) => (
         <div key={entry.id} className="flex items-start gap-2">
-          <span className="text-faint font-mono tabular-nums flex-shrink-0 w-14 text-right">
-            {entry.timestamp.toFixed(2)}s
+          <span className="text-ink-2 tabular-nums flex-shrink-0 w-16 text-right">
+            {entry.timestamp.toFixed(1)} s
           </span>
-          <span
-            className={`w-1.5 h-1.5 mt-1.5 rounded-full flex-shrink-0 ${LEVEL_DOT[entry.level]}`}
-          />
+          <span className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${LEVEL_DOT[entry.level]}`} />
           <span className={LEVEL_TEXT[entry.level]}>{entry.message}</span>
         </div>
       ))}

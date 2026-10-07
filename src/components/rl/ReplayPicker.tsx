@@ -1,149 +1,129 @@
 import { useState } from 'react'
 import type { Episode, Evaluation } from '../../lib/experimentIndex'
 import { policyLabel, rewardLabel } from '../../lib/rlLabels'
-import { Button } from '../ui/Button'
+import { trailColor } from '../../styles/tokens'
 import { MOTION } from '../../styles/motion'
+import { Button } from '../ui/Button'
 
 interface Props {
   evaluations: Evaluation[]
-  current?: Episode | null
+  current: Episode
   onOpen: (episode: Episode) => void
   opening?: Episode | null
-  compact?: boolean
-  preferredEvaluationKey?: string
 }
 
-const SELECT =
-  'w-full rounded-xl border border-hairline bg-white/85 px-3 py-2 text-base text-ink focus-visible:border-accent'
+/** coverage-strong-travel -> Coverage strong travel */
+const variantTitle = (label: string) => {
+  const words = label.replace(/[-_]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
 
-/** Pick one actual saved replay; variant, policy and test seed are separate choices. */
-export function ReplayPicker({
-  evaluations,
-  current,
-  onOpen,
-  opening,
-  compact = false,
-  preferredEvaluationKey,
-}: Props) {
-  const ready = evaluations.filter((evaluation) =>
-    evaluation.episodes.some((episode) => episode.playable)
-  )
-  const [expanded, setExpanded] = useState(!compact)
-  const [chosenEvaluation, setChosenEvaluation] = useState(
-    current?.evaluationKey ?? preferredEvaluationKey ?? ready[0]?.key ?? ''
-  )
-  const [chosenPolicy, setChosenPolicy] = useState(current?.policy ?? 'model')
-  const [chosenSeed, setChosenSeed] = useState(current?.seed ?? 301)
-  const evaluation = ready.find((item) => item.key === chosenEvaluation) ?? ready[0]
-  if (!evaluation) return null
+const POLICY_ORDER = ['model', 'hold', 'random_valid']
+const rank = (policy: string) =>
+  POLICY_ORDER.includes(policy) ? POLICY_ORDER.indexOf(policy) : POLICY_ORDER.length
 
-  const playable = evaluation.episodes.filter((episode) => episode.playable)
-  const policies = [...new Set(playable.map((episode) => episode.policy))]
-  const policy = policies.includes(chosenPolicy) ? chosenPolicy : policies[0]
-  const seeds = [
-    ...new Set(
-      playable.filter((episode) => episode.policy === policy).map((episode) => episode.seed)
-    ),
-  ].sort((a, b) => a - b)
-  const seed = seeds.includes(chosenSeed) ? chosenSeed : seeds[0]
-  const target = playable.find((episode) => episode.policy === policy && episode.seed === seed)
-  const isCurrent = current?.dir === target?.dir
+/**
+ * The replay being watched, and a way to switch: pick a reward variant, then click a policy's
+ * evaluation seed to open that replay directly.
+ */
+export function ReplayPicker({ evaluations, current, onOpen, opening }: Props) {
+  const ready = evaluations.filter((e) => e.episodes.some((episode) => episode.playable))
+  const [open, setOpen] = useState(false)
+  const [chosen, setChosen] = useState(current.evaluationKey)
+  const currentEvaluation = ready.find((e) => e.key === current.evaluationKey)
+  const evaluation = ready.find((e) => e.key === chosen) ?? currentEvaluation ?? ready[0]
+  const seedLabel = (e: Evaluation) =>
+    ready.filter((x) => x.label === e.label).length > 1 && e.trainingSeed !== null
+      ? ` · seed ${e.trainingSeed}`
+      : ''
 
   return (
-    <section
-      className={`${compact ? 'rounded-xl border border-hairline bg-white/75 p-4' : 'glass p-5'} flex flex-col gap-3`}
-      aria-label="Choose a replay"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-ink-title">Replay</h2>
-        {compact ? (
-          <Button variant="secondary" onClick={() => setExpanded((value) => !value)}>
-            {expanded ? 'Done' : 'Change replay'}
+    <section className="flex flex-col gap-4" aria-label="Replay">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold tracking-tight text-ink-title">
+            {currentEvaluation ? variantTitle(currentEvaluation.label) : 'Replay'}
+          </h2>
+          <div className="mt-1 text-base text-ink-2">
+            {policyLabel(current.policy)} · evaluation seed {current.seed}
+          </div>
+          {currentEvaluation && (
+            <div className="text-base text-ink-2">{rewardLabel(currentEvaluation)}</div>
+          )}
+        </div>
+        {ready.length > 0 && (
+          <Button variant="secondary" onClick={() => setOpen((v) => !v)}>
+            {open ? 'Done' : 'Change'}
           </Button>
-        ) : (
-          <span className="text-sm text-muted">
-            These are evaluation episodes, not training episodes.
-          </span>
         )}
       </div>
-      {compact && current && (
-        <div className="text-sm text-ink-2 leading-relaxed">
-          <strong className="text-ink">
-            {rewardLabel(ready.find((item) => item.key === current.evaluationKey) ?? evaluation)}
-          </strong>
-          {' · '}
-          {policyLabel(current.policy)}
-          {' · '}evaluation seed {current.seed}
+
+      {open && evaluation && (
+        <div className={`flex flex-col gap-4 ${MOTION.enterFade}`}>
+          {ready.length > 1 && (
+            <div className="flex flex-col rounded-xl border border-hairline bg-white overflow-hidden divide-y divide-hairline">
+              {ready.map((e) => (
+                <button
+                  key={e.key}
+                  type="button"
+                  aria-pressed={e.key === evaluation.key}
+                  onClick={() => setChosen(e.key)}
+                  className={`h-11 px-4 text-left text-base truncate ${MOTION.colors} ${
+                    e.key === evaluation.key
+                      ? 'bg-accent-wash text-accent-ink font-semibold'
+                      : 'text-ink font-medium hover:bg-accent-wash/60'
+                  }`}
+                >
+                  {variantTitle(e.label)}
+                  {seedLabel(e)}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-col gap-3">
+            {[...new Set(evaluation.episodes.filter((e) => e.playable).map((e) => e.policy))]
+              .sort((a, b) => rank(a) - rank(b))
+              .map((policy) => {
+                const episodes = evaluation.episodes
+                  .filter((e) => e.policy === policy && e.playable)
+                  .sort((a, b) => a.seed - b.seed)
+                return (
+                  <div key={policy} className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2 text-base font-medium text-ink">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: trailColor(policy) }}
+                      />
+                      {policyLabel(policy)}
+                    </div>
+                    <div className="flex rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-x divide-hairline">
+                      {episodes.map((e) => {
+                        const isCurrent = e.dir === current.dir
+                        const busy = opening === e
+                        return (
+                          <button
+                            key={e.dir}
+                            type="button"
+                            disabled={isCurrent || (opening !== null && opening !== undefined)}
+                            aria-pressed={isCurrent}
+                            aria-label={`Play ${policyLabel(policy)} on evaluation seed ${e.seed}`}
+                            onClick={() => onOpen(e)}
+                            className={`flex-1 h-10 px-2 text-base font-medium tabular-nums ${MOTION.colors} ${
+                              isCurrent || busy
+                                ? 'bg-accent-wash text-accent-ink font-semibold'
+                                : 'text-ink hover:bg-accent-wash hover:text-accent-ink'
+                            }`}
+                          >
+                            {busy ? 'Opening' : e.seed}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
         </div>
-      )}
-      {expanded && (
-        <div
-          className={`${MOTION.enter} ${
-            compact
-              ? 'grid grid-cols-2 gap-3 items-end'
-              : 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,.8fr)_auto] gap-3 items-end'
-          }`}
-        >
-          <label
-            className={`flex flex-col gap-1.5 text-sm font-medium text-ink-2 ${compact ? 'col-span-2' : ''}`}
-          >
-            Reward variant
-            <select
-              className={SELECT}
-              value={evaluation.key}
-              onChange={(event) => setChosenEvaluation(event.target.value)}
-            >
-              {ready.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {rewardLabel(item)} · trained seed {item.trainingSeed ?? 'none'}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-            Policy being replayed
-            <select
-              className={SELECT}
-              value={policy}
-              onChange={(event) => setChosenPolicy(event.target.value)}
-            >
-              {policies.map((item) => (
-                <option key={item} value={item}>
-                  {policyLabel(item)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-            Evaluation seed
-            <select
-              className={SELECT}
-              value={seed}
-              onChange={(event) => setChosenSeed(Number(event.target.value))}
-            >
-              {seeds.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button
-            variant="primary"
-            className={compact ? 'col-span-2 w-full' : ''}
-            disabled={!target || isCurrent || (opening !== null && opening !== undefined)}
-            onClick={() => target && onOpen(target)}
-          >
-            {opening ? 'Opening…' : isCurrent ? 'Viewing now' : 'Watch in 3D'}
-          </Button>
-        </div>
-      )}
-      {!compact && (
-        <p className="text-sm text-muted">
-          Training seed {evaluation.trainingSeed ?? 'none'} made the model. Evaluation seed {seed}{' '}
-          chooses the independent simulator replay. Press Play to watch its movement; 3D and Charts
-          show the same selected replay.
-        </p>
       )}
     </section>
   )

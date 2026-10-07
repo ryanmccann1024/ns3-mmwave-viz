@@ -1,11 +1,6 @@
 import type { SimFrame, NodeState, LinkState, FlowState } from '../types'
-import {
-  NODE_TYPE_LABELS,
-  NODE_BADGE_CLASSES,
-  LINK_BADGE_CLASSES,
-  NODE_LABELS,
-} from '../styles/tokens'
-import { Badge } from './ui/Badge'
+import { NODE_COLORS } from '../styles/tokens'
+import { MOTION } from '../styles/motion'
 import { Row } from './ui/Row'
 
 interface Props {
@@ -17,65 +12,70 @@ interface Props {
   onSelectFlow: (flow: { src: number; dst: number } | null) => void
 }
 
+const TYPE_NAME: Record<string, string> = {
+  ground: 'Ground node',
+  air: 'Drone',
+  bs: 'Base station',
+  vehicle: 'Vehicle',
+  peer: 'Peer',
+  gateway: 'Gateway',
+}
+
+const typeName = (type: string) => TYPE_NAME[type] ?? type
+
+function Dot({ color }: { color: string }) {
+  return (
+    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+  )
+}
+
+const linkState = (l: LinkState) =>
+  `${l.connected ? 'Connected' : 'Down'} · ${l.condition === 'LOS' ? 'line of sight' : 'blocked (NLOS)'}`
+
 export function NodeDetail({ node, links }: { node: NodeState; links: LinkState[] }) {
   const myLinks = links.filter((l) => l.nodeA === node.id || l.nodeB === node.id)
   const connected = myLinks.filter((l) => l.connected).length
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-2">
-        <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
-          {node.id}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2.5">
+          <Dot color={NODE_COLORS[node.nodeType]} />
+          <span className="text-xl font-semibold tracking-tight text-ink-title">
+            {typeName(node.nodeType)} {node.id}
+          </span>
         </div>
-        <div>
-          <div className="text-ink font-semibold text-sm">Node {node.id}</div>
-          <Badge
-            label={NODE_TYPE_LABELS[node.nodeType]}
-            colorClass={NODE_BADGE_CLASSES[node.nodeType]}
-          />
-          <div className="text-muted text-xs mt-1">
-            {connected}/{myLinks.length} links active
-          </div>
+        <div className="text-base text-ink-2">
+          {connected} of {myLinks.length} links connected
         </div>
       </div>
 
       <div>
-        <div className="text-[11px] font-semibold text-muted mb-1">Position</div>
-        <Row label="X" value={`${node.x.toFixed(1)} m`} />
-        <Row label="Y" value={`${node.y.toFixed(1)} m`} />
-        <Row label="Z" value={`${node.z.toFixed(1)} m`} />
+        <Row
+          label="Position"
+          value={`${node.x.toFixed(0)}, ${node.y.toFixed(0)}, ${node.z.toFixed(0)} m`}
+        />
       </div>
 
-      <div>
-        <div className="text-[11px] font-semibold text-muted mb-1">Links</div>
-        {myLinks.length === 0 && <div className="text-muted text-xs">No links</div>}
+      <div className="flex flex-col gap-2">
+        <div className="text-base font-semibold text-ink-title">Links</div>
+        {myLinks.length === 0 && <div className="text-ink-2 text-base">No links</div>}
         {myLinks.map((l) => {
           const peer = l.nodeA === node.id ? l.nodeB : l.nodeA
           return (
             <div
               key={`${l.nodeA}-${l.nodeB}`}
-              className="py-2 border-b border-ink/[0.06] last:border-0"
+              className="py-2 border-b border-hairline last:border-0 flex flex-col gap-0.5"
             >
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-ink-2 text-xs font-medium">Node {peer}</span>
-                <div className="flex gap-1">
-                  <Badge
-                    label={l.condition}
-                    colorClass={
-                      l.condition === 'LOS' ? LINK_BADGE_CLASSES.LOS : LINK_BADGE_CLASSES.NLOS
-                    }
-                  />
-                  <Badge
-                    label={l.connected ? 'ON' : 'OFF'}
-                    colorClass={
-                      l.connected ? LINK_BADGE_CLASSES.connected : LINK_BADGE_CLASSES.disconnected
-                    }
-                  />
-                </div>
+              <div className="flex justify-between items-baseline gap-4">
+                <span className="text-ink text-base font-medium">Node {peer}</span>
+                <span className="text-base text-ink-2 tabular-nums">
+                  {l.sinr !== undefined ? `${l.sinr.toFixed(1)} dB · ` : ''}
+                  {l.dist.toFixed(0)} m
+                </span>
               </div>
-              <div className="text-muted text-xs font-mono">
-                {l.sinr !== undefined ? `${l.sinr.toFixed(1)} dB · ` : ''}
-                {l.dist.toFixed(1)} m
+              <div className={`text-base ${l.connected ? 'text-ink-2' : 'text-rose-700'}`}>
+                {linkState(l)}
               </div>
             </div>
           )
@@ -88,30 +88,19 @@ export function NodeDetail({ node, links }: { node: NodeState; links: LinkState[
 export function LinkDetail({ link }: { link: LinkState }) {
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <div className="text-ink font-semibold text-sm mb-1">
-          Node {link.nodeA} — Node {link.nodeB}
+      <div className="flex flex-col gap-1">
+        <div className="text-xl font-semibold tracking-tight text-ink-title">
+          Node {link.nodeA} to node {link.nodeB}
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          <Badge
-            label={link.condition}
-            colorClass={link.condition === 'LOS' ? LINK_BADGE_CLASSES.LOS : LINK_BADGE_CLASSES.NLOS}
-          />
-          <Badge
-            label={link.connected ? 'CONNECTED' : 'DISCONNECTED'}
-            colorClass={
-              link.connected ? LINK_BADGE_CLASSES.connected : LINK_BADGE_CLASSES.disconnected
-            }
-          />
+        <div className={`text-base ${link.connected ? 'text-ink-2' : 'text-rose-700'}`}>
+          {linkState(link)}
         </div>
       </div>
 
       <div>
-        <div className="text-[11px] font-semibold text-muted mb-1">Link Metrics</div>
-        <Row label="Distance" value={`${link.dist.toFixed(2)} m`} />
-        {link.sinr !== undefined && <Row label="SINR" value={`${link.sinr.toFixed(2)} dB`} />}
-        <Row label="Condition" value={link.condition} />
-        {link.conditionReason && <Row label="Reason" value={link.conditionReason} />}
+        <Row label="Distance" value={`${link.dist.toFixed(1)} m`} />
+        {link.sinr !== undefined && <Row label="SINR" value={`${link.sinr.toFixed(1)} dB`} />}
+        {link.conditionReason && <Row label="Why" value={link.conditionReason} />}
         {link.capacityMbps !== undefined && (
           <Row label="Capacity" value={`${link.capacityMbps.toFixed(1)} Mbps`} />
         )}
@@ -119,12 +108,14 @@ export function LinkDetail({ link }: { link: LinkState }) {
           <Row label="Delivered" value={`${link.deliveredMbps.toFixed(1)} Mbps`} />
         )}
         {link.hopCount !== undefined && link.hopCount > 0 && (
-          <Row label="Max Hops" value={String(link.hopCount)} />
+          <Row label="Most hops" value={String(link.hopCount)} />
         )}
       </div>
     </div>
   )
 }
+
+const LIST_ITEM = `w-full flex items-center gap-3 px-3 py-2.5 text-left rounded-xl ${MOTION.colors}`
 
 function FlowDetail({
   flow,
@@ -136,29 +127,29 @@ function FlowDetail({
   onSelect: () => void
 }) {
   const ratio =
-    flow.demandMbps > 0 ? ((flow.deliveredMbps / flow.demandMbps) * 100).toFixed(0) : '—'
+    flow.demandMbps > 0 ? `${((flow.deliveredMbps / flow.demandMbps) * 100).toFixed(0)}%` : '–'
   return (
     <button
+      type="button"
       onClick={onSelect}
-      className={`w-full text-left py-1.5 px-2 rounded-xl transition-colors ${
-        selected ? 'bg-accent-wash ring-1 ring-accent/30' : 'hover:bg-white/70'
-      }`}
+      aria-pressed={selected}
+      className={`${LIST_ITEM} ${selected ? 'bg-accent-wash' : 'hover:bg-white/70'}`}
     >
-      <div className="flex justify-between items-center mb-0.5">
-        <span className="text-ink-2 text-xs font-medium">
+      <div className="flex-1 min-w-0">
+        <div className="text-base font-medium text-ink">
           Node {flow.src} to {flow.dst}
-        </span>
-        <span
-          className={`text-xs font-mono ${flow.routable ? 'text-emerald-600' : 'text-red-500'}`}
-        >
-          {flow.routable ? `${ratio}%` : 'unroutable'}
-        </span>
+        </div>
+        <div className="text-base text-ink-2 tabular-nums">
+          {flow.deliveredMbps.toFixed(1)} of {flow.demandMbps.toFixed(1)} Mbps
+          {flow.hopCount > 1 ? ` · ${flow.hopCount} hops` : ''}
+          {flow.latencyMs > 0 ? ` · ${flow.latencyMs.toFixed(0)} ms` : ''}
+        </div>
       </div>
-      <div className="text-muted text-xs font-mono">
-        {flow.deliveredMbps.toFixed(1)}/{flow.demandMbps.toFixed(1)} Mbps
-        {flow.hopCount > 1 ? ` · ${flow.hopCount} hops` : ''}
-        {flow.latencyMs > 0 ? ` · ${flow.latencyMs.toFixed(1)}ms` : ''}
-      </div>
+      <span
+        className={`flex-shrink-0 text-base font-medium tabular-nums ${flow.routable ? 'text-ink' : 'text-rose-700'}`}
+      >
+        {flow.routable ? ratio : 'No route'}
+      </span>
     </button>
   )
 }
@@ -179,35 +170,23 @@ function NodeListItem({
 
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-2 py-1.5 text-left rounded-xl transition-colors ${
-        selected ? 'bg-accent-wash ring-1 ring-accent/30' : 'hover:bg-white/70'
-      }`}
+      aria-pressed={selected}
+      className={`${LIST_ITEM} ${selected ? 'bg-accent-wash' : 'hover:bg-white/70'} ${!node.active ? 'opacity-50' : ''}`}
     >
-      <div
-        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-          selected ? 'bg-accent text-white' : 'bg-white text-ink-2 border border-hairline'
-        } ${!node.active ? 'opacity-40' : ''}`}
-      >
-        {node.id}
-      </div>
+      <Dot color={NODE_COLORS[node.nodeType]} />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-ink-2 truncate">
-            {NODE_LABELS[node.nodeType]} {node.id}
-          </span>
-          <span
-            className={`text-xs font-mono flex-shrink-0 ml-1 ${
-              connected > 0 ? 'text-emerald-600' : 'text-faint'
-            }`}
-          >
-            {connected}/{myLinks.length}
-          </span>
+        <div className="text-base font-medium text-ink truncate">
+          {typeName(node.nodeType)} {node.id}
         </div>
-        <div className="text-xs text-muted font-mono truncate">
-          ({node.x.toFixed(0)}, {node.y.toFixed(0)}, {node.z.toFixed(0)})
+        <div className="text-base text-ink-2 tabular-nums truncate">
+          {node.x.toFixed(0)}, {node.y.toFixed(0)}, {node.z.toFixed(0)} m
         </div>
       </div>
+      <span className="flex-shrink-0 text-base text-ink-2 tabular-nums">
+        {connected} of {myLinks.length} links
+      </span>
     </button>
   )
 }
@@ -258,7 +237,7 @@ export function FlowList({
 
 export function LinkLegend() {
   return (
-    <div className="flex items-center gap-4 text-[11px] text-ink-2">
+    <div className="flex items-center gap-5 text-base text-ink-2 flex-wrap">
       <span className="flex items-center gap-1.5">
         <span className="w-5 h-0.5 bg-emerald-500 inline-block rounded" />
         LOS

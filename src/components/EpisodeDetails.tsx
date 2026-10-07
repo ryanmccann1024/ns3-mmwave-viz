@@ -1,14 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ResultCatalog } from '../lib/resultCatalog'
 import { readJson } from '../lib/resultCatalog'
 import type { Episode, Evaluation } from '../lib/experimentIndex'
 import { formatNumber } from '../lib/comparisonView'
-import type { TelemetryContract } from '../lib/episodeTelemetry'
-import { rewardComponents } from '../lib/episodeTelemetry'
-import type { DecisionIndex, DecisionJoin, EpisodeTelemetry } from '../lib/decisionExplorer'
-import { decisionAtTime, isUnavailable, joinDecision } from '../lib/decisionExplorer'
-import type { TelemetryState } from '../hooks/useEpisodeTelemetry'
 import { controlledNodeIndices } from '../lib/trajectory'
 import { trailColor } from '../styles/tokens'
 import { MOTION } from '../styles/motion'
@@ -26,15 +21,15 @@ const show = (v: unknown) =>
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="tile px-4 py-3 min-w-0">
-      <div className="text-base font-semibold tabular-nums text-ink truncate">{value}</div>
-      <div className="text-xs text-muted">{label}</div>
+      <div className="text-xl font-semibold tracking-tight text-ink-title truncate">{value}</div>
+      <div className="mt-0.5 text-sm font-medium text-ink-2">{label}</div>
     </div>
   )
 }
 
 function Warn({ children }: { children: ReactNode }) {
   return (
-    <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 break-words">
+    <div className="text-base text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 break-words">
       {children}
     </div>
   )
@@ -78,21 +73,13 @@ function Identity({ episode, evaluation }: { episode: Episode; evaluation: Evalu
         <Row label="Model training seed" value={episode.trainingSeed ?? 'none (baselines only)'} />
       )}
       <Row label="Replayed policy" value={policyLabel(episode.policy)} />
-      {baseline && (
-        <div className="text-[11px] text-muted py-1.5">
-          Placement policy: nodes were placed by the{' '}
-          {policyLabel(baseline.method ?? episode.policy)} planner before the episode; recorded
-          decisions/rewards are HoldPolicy-on-prepared-layout observations, not the planner&apos;s
-          decision trace.
-        </div>
-      )}
       <Row label="Evaluation seed" value={episode.seed} />
       <Row label="Status" value={episode.status ?? 'not recorded'} />
       <Row label="Exit code" value={formatNumber(episode.exitCode)} />
       <Row label="Model selection" value={evaluation.modelSelection ?? 'not recorded'} />
       <Row label="Decisions" value={formatNumber(episode.decisions)} />
       {episode.error && <Warn>error: {episode.error}</Warn>}
-      <div className="text-[11px] text-muted break-all mt-1">{episode.dir}</div>
+      <div className="text-sm text-ink-2 break-all mt-1">{episode.dir}</div>
     </div>
   )
 }
@@ -106,14 +93,14 @@ function ContractView({ evaluation }: { evaluation: Evaluation }) {
       {mapping.nodes.map((n) => (
         <Row key={n.slot} label={`Slot ${n.slot}`} value={`${n.nodeId} · CSV node ${n.index}`} />
       ))}
-      {mapping.nodes.length === 0 && <div className="text-xs text-muted">none</div>}
+      {mapping.nodes.length === 0 && <div className="text-sm text-ink-2">none</div>}
       {mapping.missing.length > 0 && (
         <Warn>
           Controlled ids not found in the contract&apos;s node list: {mapping.missing.join(', ')}
         </Warn>
       )}
-      <div className="text-xs text-muted mt-2">
-        <span className="text-muted">actions </span>
+      <div className="text-sm text-ink-2 mt-2">
+        <span className="text-ink-2">actions </span>
         {contract.action_meanings.map((a, i) => `${i}=${a}`).join('  ')}
       </div>
     </div>
@@ -132,17 +119,13 @@ function Outcome({ episode }: { episode: Episode }) {
       ))}
       <Row label="Mask violations" value={formatNumber(episode.maskViolations)} />
       <Row label="Revalidated slots" value={formatNumber(episode.revalidatedSlotsTotal)} />
-      <div className="text-[11px] text-muted mt-1">
-        Revalidated means the simulator re-checked the action against the current state; it does not
-        mean the node moved.
-      </div>
     </div>
   )
 }
 
 function RunRecord({ data }: { data: Loaded<unknown> | null }) {
-  if (!data) return <div className="text-xs text-muted">rl_episode.json was not saved.</div>
-  if (data.state === 'loading') return <div className="text-xs text-muted">Reading…</div>
+  if (!data) return <div className="text-sm text-ink-2">rl_episode.json was not saved.</div>
+  if (data.state === 'loading') return <div className="text-sm text-ink-2">Reading…</div>
   if (data.state === 'error') return <Warn>{data.message}</Warn>
   const d = isRec(data.value) ? data.value : {}
   const keys = ['status', 'exit_code', 'stop_reason', 'control_mode', 'started_at', 'ended_at']
@@ -165,8 +148,8 @@ function RunRecord({ data }: { data: Loaded<unknown> | null }) {
 }
 
 function SummaryView({ data }: { data: Loaded<unknown> | null }) {
-  if (!data) return <div className="text-xs text-muted">summary.json was not saved.</div>
-  if (data.state === 'loading') return <div className="text-xs text-muted">Reading…</div>
+  if (!data) return <div className="text-sm text-ink-2">summary.json was not saved.</div>
+  if (data.state === 'loading') return <div className="text-sm text-ink-2">Reading…</div>
   if (data.state === 'error') return <Warn>{data.message}</Warn>
   const d = isRec(data.value) ? data.value : {}
   const network = isRec(d.network) ? d.network : {}
@@ -180,190 +163,7 @@ function SummaryView({ data }: { data: Loaded<unknown> | null }) {
       {Object.entries(network).map(([k, v]) => (
         <Row key={k} label={k} value={show(v)} />
       ))}
-      <div className="text-[11px] text-muted mt-1">
-        Whole-run statistics from summary.json. This is a separate source from comparison.json and
-        may cover a different time window.
-      </div>
     </>
-  )
-}
-
-function DecisionView({
-  contract,
-  join,
-  currentTime,
-}: {
-  contract: TelemetryContract
-  join: DecisionJoin | null
-  currentTime: number
-}) {
-  if (!join) {
-    return (
-      <div className="text-xs text-muted">
-        No saved decision covers t={currentTime.toFixed(3)}s. Telemetry may be saved only every few
-        decisions.
-      </div>
-    )
-  }
-  const { record, action, input, outcome } = join
-  const meanings = contract.action_meanings
-  const slotLabel = (slot: number) =>
-    `Slot ${slot} · ${contract.slot_node_ids[slot] ?? 'empty slot'}`
-  const actionName = (index: number) => meanings[index] ?? 'unknown action'
-  return (
-    <div className="flex flex-col gap-2">
-      <div>
-        <Row label="Decision" value={formatNumber(record.decision)} />
-        <Row label="Decision time" value={`${formatNumber(record.time_s)} s`} />
-        <Row label="Tick" value={formatNumber(record.tick)} />
-        {outcome && outcome.intervalStartS !== null && (
-          <Row
-            label="Action applied and reward earned over"
-            value={`(${formatNumber(outcome.intervalStartS)}, ${formatNumber(outcome.intervalEndS)}] s`}
-          />
-        )}
-      </div>
-
-      <div>
-        <div className="text-[11px] font-semibold text-muted mb-0.5 mt-1">Action sent</div>
-        {join.kind === 'reset' && <div className="text-xs text-muted">none sent yet (reset)</div>}
-        {action && isUnavailable(action) && (
-          <div className="text-xs text-muted">unavailable — {action.reason}</div>
-        )}
-        {action &&
-          !isUnavailable(action) &&
-          action.requested.map((actionIndex, slot) => {
-            const revalidated = action.revalidatedSlots.includes(slot)
-            const applied =
-              action.applied.status === 'derived' ? action.applied.values[slot] : undefined
-            const appliedText =
-              revalidated && applied !== undefined && applied !== actionIndex
-                ? ` · applied (derived): ${actionName(applied)}`
-                : revalidated
-                  ? ' · revalidated'
-                  : ''
-            return (
-              <Row
-                key={slot}
-                label={slotLabel(slot)}
-                value={`${actionName(actionIndex)} (index ${actionIndex})${appliedText}`}
-              />
-            )
-          })}
-        {action && !isUnavailable(action) && action.applied.status === 'unavailable' && (
-          <div className="text-[11px] text-muted mt-1">
-            applied action: unavailable — {action.applied.reason}
-          </div>
-        )}
-      </div>
-
-      {join.kind === 'action' && (
-        <div>
-          <div className="text-[11px] font-semibold text-muted mb-0.5 mt-1">
-            Pre-action mask (decision {record.decision - 1})
-          </div>
-          {input?.status === 'missing_source' && (
-            <div className="text-xs text-muted">pre-action mask not recorded (sampled)</div>
-          )}
-          {input?.status === 'exact' && input.maskBySlot === null && (
-            <Warn>Mask length {input.mask.length} does not fit slots × actions.</Warn>
-          )}
-          {input?.status === 'exact' &&
-            input.maskBySlot?.map((m) => (
-              <div key={m.slot} className="flex items-center gap-1 flex-wrap py-0.5">
-                <span className="text-xs text-muted mr-1">slot {m.slot}</span>
-                {m.actions.map((a) => (
-                  <span
-                    key={a.actionIndex}
-                    title={a.allowed ? 'allowed' : 'masked out'}
-                    className={`px-1 rounded border text-[10px] ${
-                      a.allowed
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                        : 'bg-gray-100 border-gray-200 text-muted line-through'
-                    }`}
-                  >
-                    {a.actionName}
-                  </span>
-                ))}
-              </div>
-            ))}
-        </div>
-      )}
-
-      <div>
-        <div className="text-[11px] font-semibold text-muted mb-0.5 mt-1">
-          Reward earned in this interval
-        </div>
-        {record.reward ? (
-          <>
-            {rewardComponents(record).map(([k, v]) => (
-              <Row key={k} label={k} value={formatNumber(v)} />
-            ))}
-            <Row label="Total" value={formatNumber(record.reward.total)} />
-            {record.reward.source && <Row label="Source" value={record.reward.source} />}
-          </>
-        ) : (
-          <div className="text-xs text-muted">not yet awarded</div>
-        )}
-      </div>
-
-      <Row
-        label="Revalidated slots"
-        value={record.revalidated_slots.length ? record.revalidated_slots.join(', ') : 'none'}
-      />
-    </div>
-  )
-}
-
-function Telemetry({
-  episode,
-  telemetryState,
-  decisionIndex,
-  indexError,
-  currentTime,
-}: {
-  episode: Episode
-  telemetryState: TelemetryState
-  decisionIndex: DecisionIndex | null
-  indexError: string | null
-  currentTime: number
-}) {
-  const path = episode.files.steps
-  const telemetry: EpisodeTelemetry | null =
-    telemetryState.status === 'ready' ? telemetryState.telemetry : null
-
-  const join = useMemo(() => {
-    if (!telemetry || !decisionIndex) return null
-    const decision = decisionAtTime(decisionIndex, currentTime)
-    return decision === null ? null : joinDecision(telemetry, decisionIndex, decision)
-  }, [telemetry, decisionIndex, currentTime])
-
-  if (!path) {
-    return (
-      <div className="text-xs text-muted">
-        Decision telemetry was not saved for this episode. Playback is unaffected.
-      </div>
-    )
-  }
-  if (telemetryState.status === 'idle' || telemetryState.status === 'loading')
-    return <div className="text-xs text-muted">Reading steps.jsonl…</div>
-  if (telemetryState.status === 'needs_explicit_load')
-    return (
-      <div className="text-xs text-muted">
-        {telemetryState.reason}. Use the Decisions tab to load it.
-      </div>
-    )
-  if (telemetryState.status === 'error') return <Warn>{telemetryState.error}</Warn>
-  if (indexError) return <Warn>{indexError}</Warn>
-  if (!telemetry || !decisionIndex) return null
-  return (
-    <div>
-      <div className="text-[11px] text-muted mb-1">
-        Saved interval containing t={currentTime.toFixed(3)}s ({telemetry.steps.length} records).
-        Sparse telemetry leaves gaps; actions are never interpolated.
-      </div>
-      <DecisionView contract={telemetry.header.contract} join={join} currentTime={currentTime} />
-    </div>
   )
 }
 
@@ -401,7 +201,8 @@ function PathCard({
     <button
       onClick={onToggle}
       type="button"
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left ${MOTION.colors} ${
+      aria-pressed={on}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left ${MOTION.colors} ${
         on
           ? 'bg-white border-white shadow-control'
           : 'bg-white/40 border-hairline hover:bg-white/70'
@@ -412,9 +213,9 @@ function PathCard({
         style={{ backgroundColor: color, opacity: on ? 1 : 0.35 }}
       />
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-ink truncate">{policyLabel(policy)} path</div>
-        <div className="text-sm text-muted">
-          {current ? 'Current replay' : 'Overlay only'} · return {shortNumber(episodeReturn)}
+        <div className="text-base font-medium text-ink truncate">{policyLabel(policy)}</div>
+        <div className="text-base text-ink-2">
+          {current ? 'This replay' : `Return ${shortNumber(episodeReturn)}`}
         </div>
       </div>
       <Switch on={on} />
@@ -444,10 +245,6 @@ function TrailOptions({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-sm text-muted leading-relaxed">
-        These switches add or remove colored paths; they do not change the moving replay. Use
-        “Choose a replay” above to switch policies. Press Play to see the current node move.
-      </div>
       <div className="flex flex-col gap-1.5">
         <PathCard
           policy={episode.policy}
@@ -468,8 +265,8 @@ function TrailOptions({
       </div>
       {nodes.length > 1 && (
         <div className="flex flex-col gap-1.5 mt-1">
-          <div className="text-[11px] font-medium text-muted">Follow one node</div>
-          <div className="flex flex-wrap gap-1">
+          <div className="text-base font-medium text-ink-2">Show paths for</div>
+          <div className="self-start max-w-full flex rounded-xl border border-hairline bg-white shadow-control overflow-x-auto divide-x divide-hairline">
             {[null, ...nodes].map((n) => {
               const active = node === n
               return (
@@ -478,10 +275,10 @@ function TrailOptions({
                   type="button"
                   aria-pressed={active}
                   onClick={() => onNode(n)}
-                  className={`px-2 h-7 rounded-lg text-xs font-medium border ${MOTION.colors} ${
+                  className={`h-10 px-3.5 text-base whitespace-nowrap ${MOTION.colors} ${
                     active
-                      ? 'bg-ink text-white border-ink'
-                      : 'bg-white/70 text-ink-2 border-hairline hover:bg-white'
+                      ? 'bg-accent-wash text-accent-ink font-semibold'
+                      : 'text-ink-2 font-medium hover:bg-accent-wash/60 hover:text-ink'
                   }`}
                 >
                   {n ?? 'All nodes'}
@@ -492,9 +289,7 @@ function TrailOptions({
         </div>
       )}
       {options.length === 0 && (
-        <div className="text-[11px] text-muted">
-          No other policy has saved positions for this seed.
-        </div>
+        <div className="text-base text-ink-2">No other policy paths for this seed.</div>
       )}
       {Object.entries(errors).map(([policy, message]) => (
         <Warn key={policy}>
@@ -509,11 +304,6 @@ interface Props {
   catalog: ResultCatalog
   evaluation: Evaluation
   episode: Episode
-  currentTime: number
-  /** steps.jsonl, read once per player and shared with the Decisions tab */
-  telemetryState: TelemetryState
-  decisionIndex: DecisionIndex | null
-  indexError: string | null
   overlayOptions: OverlayOption[]
   overlayPolicies: string[]
   trailErrors: Record<string, string>
@@ -526,10 +316,6 @@ export function EpisodeDetails({
   catalog,
   evaluation,
   episode,
-  currentTime,
-  telemetryState,
-  decisionIndex,
-  indexError,
   overlayOptions,
   overlayPolicies,
   trailErrors,
@@ -542,8 +328,8 @@ export function EpisodeDetails({
 
   const completed = episode.status === 'completed'
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-2">
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-3">
         <Stat
           label="Delivery ratio"
           value={
@@ -568,7 +354,7 @@ export function EpisodeDetails({
       {!completed && <Warn>Status: {episode.status ?? 'not recorded'}</Warn>}
 
       <div>
-        <Disclosure title="Overlay other policy paths (optional)">
+        <Disclosure title="Other policies' paths">
           <TrailOptions
             episode={episode}
             options={overlayOptions}
@@ -585,15 +371,6 @@ export function EpisodeDetails({
       </div>
 
       <div>
-        <Disclosure title="Decision at this moment">
-          <Telemetry
-            episode={episode}
-            telemetryState={telemetryState}
-            decisionIndex={decisionIndex}
-            indexError={indexError}
-            currentTime={currentTime}
-          />
-        </Disclosure>
         <Disclosure title="Outcome">
           <Outcome episode={episode} />
         </Disclosure>

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { Workspace } from '../../hooks/useWorkspace'
 import { BrandMark } from '../ui/BrandMark'
 import { Button } from '../ui/Button'
+import { MOTION } from '../../styles/motion'
 
 export type Section = 'home' | 'runs' | 'experiments'
 
@@ -28,59 +29,65 @@ const ICONS: Record<Section, ReactNode> = {
   ),
 }
 
+function Icon({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`flex-shrink-0 ${className ?? ''}`}
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  )
+}
+
 function NavItem({
   section,
   label,
-  count,
   active,
   onClick,
 }: {
   section: Section
   label: string
-  count?: number
   active: boolean
   onClick: () => void
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+      title={label}
+      aria-current={active ? 'page' : undefined}
+      className={`w-full h-12 flex items-center justify-center md:justify-start gap-3 px-3 md:px-4 rounded-xl text-base font-medium ${MOTION.colors} ${
         active ? 'bg-white text-ink shadow-control' : 'text-ink-2 hover:bg-white/60'
       }`}
     >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={active ? 'text-accent' : 'text-muted'}
-      >
-        {ICONS[section]}
-      </svg>
-      <span className="flex-1 text-left">{label}</span>
-      {count !== undefined && <span className="text-[11px] text-muted tabular-nums">{count}</span>}
+      <Icon className={active ? 'text-accent' : 'text-ink-2'}>{ICONS[section]}</Icon>
+      <span className="hidden md:inline flex-1 text-left truncate">{label}</span>
     </button>
   )
 }
 
-/** Persistent left navigation with the open folder pinned at the bottom */
+/** Persistent left navigation with the open folder pinned at the bottom; icons only on narrow screens */
 export function NavRail({ active, onNavigate, workspace }: Props) {
   const hasFolder = workspace.dirName !== null
   return (
-    <aside className="glass w-60 flex-shrink-0 flex flex-col p-3 gap-4">
-      <div className="flex items-center gap-2.5 px-1.5 pt-1">
-        <BrandMark size={32} />
-        <div className="leading-tight">
-          <div className="text-sm font-semibold text-ink-title">mmWave Viz</div>
-          <div className="text-[11px] text-muted">ns-3 simulation viewer</div>
-        </div>
+    <aside className="glass w-[4.5rem] md:w-64 flex-shrink-0 flex flex-col p-3 md:p-4 gap-8">
+      <div className="flex items-center justify-center md:justify-start gap-3 md:px-1 pt-1">
+        <BrandMark size={40} />
+        <span className="hidden md:inline text-lg font-semibold tracking-tight text-ink-title">
+          mmWave Viz
+        </span>
       </div>
 
-      <nav className="flex flex-col gap-1">
+      <nav className="flex flex-col gap-1.5">
         <NavItem
           section="home"
           label="Home"
@@ -90,36 +97,62 @@ export function NavRail({ active, onNavigate, workspace }: Props) {
         <NavItem
           section="runs"
           label="Simulation runs"
-          count={hasFolder ? workspace.runs.length : undefined}
           active={active === 'runs'}
           onClick={() => onNavigate('runs')}
         />
         <NavItem
           section="experiments"
           label="RL experiments"
-          count={
-            hasFolder
-              ? workspace.experimentRoots.length + workspace.trainingRoots.length
-              : undefined
-          }
           active={active === 'experiments'}
           onClick={() => onNavigate('experiments')}
         />
       </nav>
 
-      <div className="mt-auto tile p-3 flex flex-col gap-2">
-        <div className="text-[11px] font-medium text-muted">Open folder</div>
-        <div className="text-sm font-semibold text-ink truncate font-mono">
-          {workspace.loadingDir ? 'Reading…' : (workspace.dirName ?? 'None')}
-        </div>
-        <Button variant="secondary" onClick={workspace.openFolder} className="w-full !py-1.5">
+      <button
+        type="button"
+        onClick={workspace.openFolder}
+        disabled={workspace.loadingDir}
+        title={hasFolder ? 'Change folder' : 'Open folder'}
+        aria-label={hasFolder ? 'Change folder' : 'Open folder'}
+        className={`md:hidden mt-auto w-full h-12 flex items-center justify-center rounded-xl bg-white border border-hairline shadow-control text-ink-2 hover:text-ink ${MOTION.colors}`}
+      >
+        <Icon>
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </Icon>
+      </button>
+
+      <div className="mt-auto hidden md:flex flex-col gap-3">
+        {hasFolder && (
+          <div className="flex items-center gap-3 px-1 min-w-0">
+            <Icon className="text-ink-2">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </Icon>
+            <span className="flex-1 min-w-0 text-base font-medium text-ink truncate">
+              {workspace.dirName}
+            </span>
+            {workspace.canForget && (
+              <button
+                type="button"
+                onClick={workspace.forgetFolder}
+                title="Forget saved folder"
+                aria-label="Forget saved folder"
+                className={`w-8 h-8 flex items-center justify-center rounded-lg text-ink-2 hover:bg-white/70 hover:text-ink ${MOTION.colors}`}
+              >
+                <Icon>
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </Icon>
+              </button>
+            )}
+          </div>
+        )}
+        <Button
+          variant="secondary"
+          onClick={workspace.openFolder}
+          disabled={workspace.loadingDir}
+          className="w-full !py-2.5 !text-base"
+        >
           {hasFolder ? 'Change folder' : 'Open folder'}
         </Button>
-        {workspace.canForget && (
-          <Button variant="link" onClick={workspace.forgetFolder} className="self-center">
-            Forget saved folder
-          </Button>
-        )}
       </div>
     </aside>
   )

@@ -11,11 +11,11 @@ interface Props {
   selectedDecision: number | null
   focusSlot: number | null
   onSelect: (decision: number) => void
-  /** visible rows (row height is fixed at 32 px) */
+  /** visible rows (row height is fixed at 40 px) */
   visibleRows?: number
 }
 
-const ROW_PX = 32
+const ROW_PX = 40
 const OVERSCAN = 8
 const JOINT_GLYPHS = 6
 
@@ -30,7 +30,7 @@ export function DecisionList({
   selectedDecision,
   focusSlot,
   onSelect,
-  visibleRows = 9,
+  visibleRows = 12,
 }: Props) {
   const rows = useMemo(() => makeRowIndex(index, range), [index, range])
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -81,11 +81,11 @@ export function DecisionList({
         <li
           key={`gap-${a}`}
           role="listitem"
-          className="absolute left-0 right-0 flex items-center px-3 text-[11px] text-muted font-mono bg-muted/[0.08] border-y border-dashed border-hairline-strong"
+          className="absolute left-0 right-0 flex items-center px-3 text-sm text-ink-2 bg-ink/[0.03] rounded-lg"
           style={{ top, height: ROW_PX }}
         >
-          decision{a === b ? '' : 's'} {a}
-          {a === b ? '' : `–${b}`} not recorded ({g.missing} missing)
+          Decision{a === b ? '' : 's'} {a}
+          {a === b ? '' : `–${b}`} not recorded
         </li>
       )
       continue
@@ -103,21 +103,21 @@ export function DecisionList({
           aria-pressed={selected}
           aria-current={selected ? 'true' : undefined}
           onClick={() => onSelect(d)}
-          className={`w-full h-full flex items-center gap-3 px-3 text-left text-xs rounded-md ${
-            selected ? 'bg-accent-wash ring-1 ring-inset ring-accent/40' : 'hover:bg-white/80'
+          className={`w-full h-full flex items-center gap-3 px-3 text-left text-base rounded-lg ${
+            selected ? 'bg-accent-wash text-accent-ink' : 'hover:bg-white/80'
           }`}
         >
           <span
-            className={`font-mono tabular-nums w-14 flex-shrink-0 ${selected ? 'text-accent-ink font-semibold' : 'text-ink'}`}
+            className={`tabular-nums w-12 flex-shrink-0 ${selected ? 'font-semibold' : 'font-medium text-ink'}`}
           >
             {d}
           </span>
-          <span className="font-mono tabular-nums text-muted w-16 flex-shrink-0">
-            {rec ? `${rec.time_s.toFixed(3)}s` : '—'}
+          <span className="tabular-nums text-ink-2 w-16 flex-shrink-0">
+            {rec ? `${rec.time_s.toFixed(1)} s` : '–'}
           </span>
           <span className="flex items-center gap-1 flex-1 min-w-0">
             {d === 0 || requested === null ? (
-              <span className="text-muted">{d === 0 ? 'reset' : 'no action'}</span>
+              <span className="text-ink-2">{d === 0 ? 'Start' : 'No action'}</span>
             ) : focusSlot !== null ? (
               requested[focusSlot] !== undefined ? (
                 <ActionGlyph
@@ -128,7 +128,7 @@ export function DecisionList({
                   label={`slot ${focusSlot}`}
                 />
               ) : (
-                <span className="text-muted">slot {focusSlot} absent</span>
+                <span className="text-ink-2">Not recorded</span>
               )
             ) : (
               <>
@@ -143,21 +143,21 @@ export function DecisionList({
                   />
                 ))}
                 {requested.length > JOINT_GLYPHS && (
-                  <span className="text-muted">+{requested.length - JOINT_GLYPHS}</span>
+                  <span className="text-ink-2">+{requested.length - JOINT_GLYPHS}</span>
                 )}
               </>
             )}
           </span>
           {reval.length > 0 && (
             <span
-              className="text-[10px] font-semibold text-violet-700 flex-shrink-0"
+              className="text-sm font-semibold text-violet-700 flex-shrink-0"
               title="revalidated slots"
             >
               R{reval.length}
             </span>
           )}
-          <span className="font-mono tabular-nums text-ink-2 w-16 text-right flex-shrink-0">
-            {typeof reward === 'number' && Number.isFinite(reward) ? reward.toFixed(3) : '—'}
+          <span className="tabular-nums text-ink-2 w-16 text-right flex-shrink-0">
+            {typeof reward === 'number' && Number.isFinite(reward) ? reward.toFixed(3) : '–'}
           </span>
         </button>
       </li>
@@ -165,24 +165,32 @@ export function DecisionList({
   }
 
   return (
-    <div
-      ref={scrollRef}
-      onScroll={(e) => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}
-      className="relative overflow-y-auto rounded-lg border border-hairline bg-white/60"
-      style={{ height: viewport }}
-    >
-      <ul
-        aria-label={`Decisions ${range[0]} to ${range[1]}`}
-        className="relative m-0 p-0 list-none"
-        style={{ height: rows.length * ROW_PX }}
+    <div className="flex flex-col min-w-0">
+      <div className="flex items-center gap-3 px-3 pb-2 text-sm font-medium text-ink-2 border-b border-hairline">
+        <span className="w-12 flex-shrink-0">#</span>
+        <span className="w-16 flex-shrink-0">Time</span>
+        <span className="flex-1">Action</span>
+        <span className="w-16 text-right flex-shrink-0">Reward</span>
+      </div>
+      <div
+        ref={scrollRef}
+        onScroll={(e) => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}
+        className="relative overflow-y-auto pt-1"
+        style={{ height: viewport }}
       >
-        {items}
-      </ul>
-      {rows.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-xs text-muted">
-          No decisions in this range.
-        </div>
-      )}
+        <ul
+          aria-label={`Decisions ${range[0]} to ${range[1]}`}
+          className="relative m-0 p-0 list-none"
+          style={{ height: rows.length * ROW_PX }}
+        >
+          {items}
+        </ul>
+        {rows.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center text-base text-ink-2">
+            No decisions in this range.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

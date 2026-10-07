@@ -48,6 +48,7 @@ export default {
         'fade-in': 'fade-in 180ms cubic-bezier(0.2, 0, 0, 1) both',
         'rise-in': 'rise-in 180ms cubic-bezier(0.2, 0, 0, 1) both',
         'pulse-soft': 'pulse-soft 1.4s ease-in-out infinite',
+        'fade-in-slow': 'fade-in 280ms cubic-bezier(0.2, 0, 0, 1) both',
       },
     },
   },

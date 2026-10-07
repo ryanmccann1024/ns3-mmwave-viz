@@ -4,50 +4,23 @@ import type { DecisionJoin, EpisodeTelemetry } from '../../lib/decisionExplorer'
 import { isUnavailable } from '../../lib/decisionExplorer'
 import type { NodeMapping } from '../../lib/nodeIdentity'
 import type { SimFrame } from '../../types'
-import { componentColor } from '../../styles/tokens'
-import { Badge } from '../ui/Badge'
-import { Button } from '../ui/Button'
+import { actionColor, componentColor } from '../../styles/tokens'
+import { MOTION } from '../../styles/motion'
 import { Disclosure } from '../ui/Disclosure'
 import { ActionGlyph } from './ActionGlyph'
-
-interface Props {
-  telemetry: EpisodeTelemetry
-  join: DecisionJoin
-  focusSlot: number | null
-  mapping: NodeMapping
-  /** the frame the scene currently shows (for incident links) */
-  frame: SimFrame
-  onPrev: () => void
-  onNext: () => void
-  canPrev: boolean
-  canNext: boolean
-  /** set when the last selection could not be aligned with a playback frame */
-  seekNotice: string | null
-}
+import { Note } from '../ExperimentStatus'
 
 const RAW_CAP = 64 * 1024
+const fmt1 = (v: number) => v.toFixed(1)
 const fmt3 = (v: number) => v.toFixed(3)
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="tile px-3 py-2.5 flex flex-col gap-1.5 min-w-0">
-      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted">{title}</h4>
-      {children}
-    </section>
-  )
-}
-
-function Line({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex justify-between items-baseline gap-3 text-xs">
-      <span className="text-muted flex-shrink-0">{label}</span>
-      <span className="text-ink font-mono tabular-nums text-right break-all min-w-0">{value}</span>
-    </div>
-  )
-}
-
-function Unavailable({ children }: { children: ReactNode }) {
-  return <div className="text-xs text-muted italic">{children}</div>
+/** delivery_ratio -> Delivery ratio, north -> North */
+const words = (key: string) => {
+  const t = key
+    .replace(/_+/g, ' ')
+    .trim()
+    .replace(/\b(sinr|snr|los|nlos|mcs)\b/gi, (w) => w.toUpperCase())
+  return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
 function rawText(join: DecisionJoin): { text: string; truncated: boolean } {
@@ -63,22 +36,235 @@ function rawText(join: DecisionJoin): { text: string; truncated: boolean } {
   return { text: full.slice(0, RAW_CAP), truncated: true }
 }
 
-/** Inputs (n−1) / Action (n) / Context (n) / Raw, with explicit unavailable states. */
-export function DecisionDetail({
+function Line({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex justify-between items-baseline gap-4 py-2 border-b border-hairline last:border-0 text-base">
+      <span className="text-ink-2 flex-shrink-0">{label}</span>
+      <span className="text-ink font-medium tabular-nums text-right break-all min-w-0">
+        {value}
+      </span>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Summary: the one card to read. What each node did, and what that earned.
+// ---------------------------------------------------------------------------
+
+interface SummaryProps {
+  telemetry: EpisodeTelemetry
+  join: DecisionJoin
+  total: number
+  focusSlot: number | null
+  onFocusSlot: (slot: number | null) => void
+  /** scene colour of each slot's node, when known */
+  colorBySlot?: (string | null)[]
+  onPrev: () => void
+  onNext: () => void
+  canPrev: boolean
+  canNext: boolean
+}
+
+export function DecisionSummary({
+  telemetry,
+  join,
+  total,
+  focusSlot,
+  onFocusSlot,
+  colorBySlot,
+  onPrev,
+  onNext,
+  canPrev,
+  canNext,
+}: SummaryProps) {
+  const contract = telemetry.header.contract
+  const meanings = contract.action_meanings
+  const slotName = (s: number) => contract.slot_node_ids[s] ?? `Slot ${s}`
+  const { action, outcome } = join
+  const reward = outcome?.reward ?? null
+  const components = reward?.components ? Object.entries(reward.components) : []
+  const magnitude = components.reduce((acc, [, v]) => acc + Math.abs(v), 0) || 1
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center gap-4 flex-wrap">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-semibold tracking-tight text-ink-title tabular-nums">
+            Decision {join.decision}
+            <span className="font-medium text-ink-2"> of {total}</span>
+          </h2>
+          <div className="text-base text-ink-2 tabular-nums">
+            {join.kind === 'reset' ? 'Episode start' : `At ${fmt1(join.record.time_s)} s`}
+          </div>
+        </div>
+        <div className="ml-auto flex rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-x divide-hairline">
+          {[
+            { label: 'Previous', onClick: onPrev, enabled: canPrev },
+            { label: 'Next', onClick: onNext, enabled: canNext },
+          ].map((b) => (
+            <button
+              key={b.label}
+              type="button"
+              onClick={b.onClick}
+              disabled={!b.enabled}
+              aria-label={`${b.label} decision`}
+              className={`h-10 px-4 text-base font-medium ${MOTION.colors} ${
+                b.enabled
+                  ? 'text-ink hover:bg-accent-wash hover:text-accent-ink'
+                  : 'text-ink-2/50 cursor-not-allowed'
+              }`}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {/* Keyed on the decision so each step fades in as a whole */}
+      <div key={join.decision} className={`flex flex-col gap-6 ${MOTION.enterFade}`}>
+        {join.kind === 'reset' ? (
+          <div className="text-base text-ink-2">
+            The episode starts here, so no move has been made yet. Press Next to see the first
+            decision.
+          </div>
+        ) : (
+          <>
+            <section className="flex flex-col gap-3">
+              <h3 className="text-lg font-semibold tracking-tight text-ink-title">
+                What each node did
+              </h3>
+              {!action || isUnavailable(action) ? (
+                <div className="text-base text-ink-2">This move was not recorded.</div>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
+                  {action.requested.map((req, slot) => {
+                    const applied =
+                      action.applied.status === 'derived' ? action.applied.values[slot] : undefined
+                    const changed = applied !== undefined && applied !== req
+                    const move = meanings[changed ? applied : req] ?? `action ${req}`
+                    const active = focusSlot === slot
+                    const color = colorBySlot?.[slot] ?? null
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => onFocusSlot(active ? null : slot)}
+                        title="Highlight this node"
+                        className={`tile p-4 text-left flex flex-col gap-2 ${MOTION.surface} ${
+                          active ? 'ring-2 ring-accent bg-accent-wash' : 'hover:bg-white'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 text-base font-medium text-ink-2">
+                          {color && (
+                            <span
+                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: color }}
+                            />
+                          )}
+                          {slotName(slot)}
+                        </span>
+                        <span className="flex items-center gap-2.5">
+                          <span
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: actionColor(move, req) }}
+                          />
+                          <span className="text-2xl font-semibold tracking-tight text-ink-title">
+                            {words(move)}
+                          </span>
+                        </span>
+                        {changed && (
+                          <span className="text-base text-ink-2">
+                            Asked for {words(meanings[req] ?? `action ${req}`)}, which was blocked
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-3">
+              <div className="flex items-baseline justify-between gap-4 flex-wrap">
+                <h3 className="text-lg font-semibold tracking-tight text-ink-title">
+                  Reward for this step
+                </h3>
+                {reward && (
+                  <span className="text-3xl font-semibold tracking-tight tabular-nums text-ink-title">
+                    {fmt3(reward.total)}
+                  </span>
+                )}
+              </div>
+              {!reward ? (
+                <div className="text-base text-ink-2">No reward was recorded for this step.</div>
+              ) : (
+                components.length > 0 && (
+                  <div className="flex flex-col gap-2.5">
+                    {components.map(([k, v], i) => (
+                      <div
+                        key={k}
+                        className="grid grid-cols-[15rem_1fr_4.5rem] items-center gap-3 text-base"
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: componentColor(i) }}
+                          />
+                          <span className="truncate text-ink">{words(k)}</span>
+                        </span>
+                        <span className="h-2.5 rounded-full bg-ink/[0.05] overflow-hidden">
+                          <span
+                            className={`block h-full rounded-full origin-left ${MOTION.lift}`}
+                            style={{
+                              backgroundColor: componentColor(i),
+                              transform: `scaleX(${Math.abs(v) / magnitude})`,
+                              opacity: v < 0 ? 0.45 : 1,
+                            }}
+                          />
+                        </span>
+                        <span className="text-right font-medium tabular-nums text-ink">
+                          {fmt3(v)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </section>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// More: the technical record behind a decision, for anyone who wants it
+// ---------------------------------------------------------------------------
+
+interface MoreProps {
+  telemetry: EpisodeTelemetry
+  join: DecisionJoin
+  focusSlot: number | null
+  mapping: NodeMapping
+  /** the frame the scene currently shows (for the focused node's links) */
+  frame: SimFrame
+  /** set when the last selection could not be aligned with a playback frame */
+  seekNotice: string | null
+}
+
+export function DecisionMore({
   telemetry,
   join,
   focusSlot,
   mapping,
   frame,
-  onPrev,
-  onNext,
-  canPrev,
-  canNext,
   seekNotice,
-}: Props) {
+}: MoreProps) {
   const contract = telemetry.header.contract
   const meanings = contract.action_meanings
-  const slotName = (s: number) => contract.slot_node_ids[s] ?? `slot ${s} (empty)`
+  const slotName = (s: number) => contract.slot_node_ids[s] ?? `Slot ${s}`
   const { input, action, outcome } = join
   const raw = useMemo(() => rawText(join), [join])
 
@@ -99,328 +285,118 @@ export function DecisionDetail({
     })
   }, [frame, csvId])
 
-  const slotMarks = (slot: number) => {
-    if (!action || isUnavailable(action)) return null
-    const req = action.requested[slot]
-    if (req === undefined) return <Unavailable>slot {slot} is not in action_sent</Unavailable>
-    const reval = action.revalidatedSlots.includes(slot)
-    const applied = action.applied.status === 'derived' ? action.applied.values[slot] : undefined
-    const allowed =
-      input && input.status === 'exact' && input.maskBySlot
-        ? (input.maskBySlot[slot]?.actions[req]?.allowed ?? null)
-        : null
-    return (
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <span className="flex items-center gap-1.5">
-          <span className="text-muted">requested</span>
-          <ActionGlyph
-            index={req}
-            meaning={meanings[req] ?? null}
-            revalidated={reval}
-            label={slotName(slot)}
-          />
-          <span className="font-mono">{meanings[req] ?? `index ${req}`}</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="text-muted">action valid</span>
-          <span className="font-mono">
-            {allowed === null
-              ? 'unavailable (no pre-action mask)'
-              : allowed
-                ? 'yes'
-                : 'no (masked out)'}
-          </span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="text-muted">applied (derived)</span>
-          {applied === undefined ? (
-            <span className="font-mono">
-              unavailable — {action.applied.status === 'unavailable' ? action.applied.reason : ''}
-            </span>
-          ) : (
-            <>
-              <ActionGlyph
-                index={applied}
-                meaning={meanings[applied] ?? null}
-                label={`${slotName(slot)} applied`}
-              />
-              <span className="font-mono">{meanings[applied] ?? `index ${applied}`}</span>
-              {!reval && <span className="text-muted">— no revalidation recorded</span>}
-            </>
-          )}
-        </span>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-2 min-w-0">
-      <header className="flex items-center gap-2 flex-wrap">
-        <h3 className="text-sm font-semibold text-ink-title">Decision {join.decision}</h3>
-        <Badge
-          label={join.kind}
-          colorClass={
-            join.kind === 'reset'
-              ? 'bg-gray-100 text-ink-2 border border-gray-300'
-              : 'bg-accent-wash text-accent-ink border border-accent/20'
-          }
-        />
-        <span className="text-xs text-muted font-mono tabular-nums">
-          t = {fmt3(join.record.time_s)} s
-        </span>
-        <span className="ml-auto flex items-center gap-1">
-          <Button
-            variant="ghost"
-            onClick={onPrev}
-            disabled={!canPrev}
-            aria-label="Previous decision"
-          >
-            Prev
-          </Button>
-          <Button variant="ghost" onClick={onNext} disabled={!canNext} aria-label="Next decision">
-            Next
-          </Button>
-        </span>
-      </header>
-      {seekNotice && (
-        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-          {seekNotice}
-        </div>
-      )}
+    <div className="flex flex-col gap-6 pt-1">
+      {seekNotice && <Note tone="warn">{seekNotice}</Note>}
 
-      {join.kind === 'reset' ? (
-        <Group title="Reset">
-          <Unavailable>
-            Reset — no action or outcome window. The scene shows the recorded initial state.
-          </Unavailable>
-          <Line label="tick" value={join.record.tick} />
-          <Line label="time_s" value={fmt3(join.record.time_s)} />
-          {typeof join.record.obs_sha256 === 'string' && (
-            <Line
-              label="obs_sha256"
-              value={
-                <span title={join.record.obs_sha256}>{join.record.obs_sha256.slice(0, 12)}…</span>
-              }
-            />
-          )}
-        </Group>
-      ) : (
-        <div className="grid gap-2 grid-cols-1 2xl:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
-          <Group title={`Inputs · from decision ${join.decision - 1}`}>
-            {!input || input.status === 'missing_source' ? (
-              <Unavailable>
-                Pre-action inputs for decision {join.decision} were not recorded (decision{' '}
-                {join.decision - 1} is missing from the sampled telemetry).
-              </Unavailable>
-            ) : (
-              <>
-                <Line label="source decision" value={input.sourceDecision} />
-                <Line label="tick" value={input.tick} />
-                <Line label="time_s" value={fmt3(input.timeS)} />
-                <Line
-                  label="obs_sha256"
-                  value={
-                    input.obsSha256 ? (
-                      <span
-                        title={input.obsSha256}
-                        aria-label={`observation hash ${input.obsSha256}`}
-                      >
-                        {input.obsSha256.slice(0, 12)}…
-                      </span>
-                    ) : (
-                      'not recorded'
-                    )
-                  }
-                />
-                <div className="text-[11px] text-muted mt-1">
-                  Pre-action mask (valid actions per slot)
-                </div>
-                {input.maskBySlot === null ? (
-                  <Unavailable>
-                    mask length {input.mask.length} does not fit slots × actions
-                  </Unavailable>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5" role="list" aria-label="Pre-action mask">
-                    {input.maskBySlot.map((m) => (
-                      <div
-                        key={m.slot}
-                        role="listitem"
-                        className={`flex items-center gap-0.5 rounded px-1 py-0.5 ${
-                          focusSlot === m.slot ? 'bg-accent-wash ring-1 ring-accent/40' : ''
-                        }`}
-                        title={`slot ${m.slot} · ${slotName(m.slot)}`}
-                      >
-                        <span className="text-[10px] text-muted font-mono w-3">{m.slot}</span>
-                        {m.actions.map((a) => (
-                          <span
-                            key={a.actionIndex}
-                            title={`${a.actionName}: ${a.allowed ? 'valid' : 'invalid'}`}
-                            aria-label={`${slotName(m.slot)} ${a.actionName} ${a.allowed ? 'valid' : 'invalid'}`}
-                            className={`w-2.5 h-2.5 rounded-sm border ${
-                              a.allowed
-                                ? 'bg-emerald-400/80 border-emerald-500'
-                                : 'bg-transparent border-hairline-strong'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {join.sourceRecord?.facts !== undefined && (
-                  <Disclosure title="Recorded context (facts, as saved)">
-                    <pre className="text-[10px] font-mono text-ink-2 whitespace-pre-wrap break-all max-h-48 overflow-auto">
-                      {JSON.stringify(join.sourceRecord.facts, null, 1).slice(0, 8 * 1024)}
-                    </pre>
-                  </Disclosure>
-                )}
-                <div className="text-[10px] text-muted">
-                  Only the evidence saved in steps.jsonl: mask, observation hash and recorded facts.
-                  The full observation vector is not in this file.
-                </div>
-              </>
-            )}
-          </Group>
-
-          <Group title="Action">
-            {!action || isUnavailable(action) ? (
-              <Unavailable>
-                action: unavailable — {action ? action.reason : 'no record'}
-              </Unavailable>
-            ) : (
-              <>
-                {focusSlot !== null ? (
-                  <>
-                    <div className="text-xs text-ink font-medium font-mono">
-                      {slotName(focusSlot)}
-                    </div>
-                    {slotMarks(focusSlot)}
-                  </>
-                ) : (
-                  <Unavailable>Pick a slot chip to see one node&apos;s marks.</Unavailable>
-                )}
-                <div className="flex items-center gap-1 flex-wrap mt-1" aria-label="Joint action">
-                  <span className="text-[11px] text-muted mr-1">joint</span>
-                  {action.requested.map((a, s) => (
+      {input && input.status !== 'missing_source' && input.maskBySlot && (
+        <section className="flex flex-col gap-3">
+          <h3 className="text-lg font-semibold tracking-tight text-ink-title">
+            Moves each node was allowed
+          </h3>
+          <div className="flex flex-col gap-2">
+            {input.maskBySlot.map((m) => (
+              <div
+                key={m.slot}
+                className={`flex items-center gap-4 rounded-xl px-3 py-2 ${focusSlot === m.slot ? 'bg-accent-wash' : ''}`}
+              >
+                <span className="w-32 text-base font-medium text-ink truncate">
+                  {slotName(m.slot)}
+                </span>
+                <span className="flex items-center gap-1.5 flex-wrap">
+                  {m.actions.map((a) => (
                     <ActionGlyph
-                      key={s}
+                      key={a.actionIndex}
                       size="sm"
-                      index={a}
-                      meaning={meanings[a] ?? null}
-                      revalidated={action.revalidatedSlots.includes(s)}
-                      label={slotName(s)}
+                      index={a.actionIndex}
+                      meaning={a.actionName}
+                      allowed={a.allowed}
+                      label={slotName(m.slot)}
                     />
                   ))}
-                </div>
-                {action.applied.status === 'unavailable' && (
-                  <Unavailable>applied: unavailable — {action.applied.reason}</Unavailable>
-                )}
-                <Disclosure title="All slots">
-                  <div className="flex flex-col gap-2">
-                    {action.requested.map((_, s) => (
-                      <div key={s} className="flex flex-col gap-0.5">
-                        <div className="text-[11px] text-ink-2 font-mono">{slotName(s)}</div>
-                        {slotMarks(s)}
-                      </div>
-                    ))}
-                  </div>
-                </Disclosure>
-              </>
-            )}
-          </Group>
-
-          <Group title="Context · outcome interval">
-            {outcome && (
-              <>
-                <Line
-                  label="interval"
-                  value={
-                    outcome.intervalStartS === null
-                      ? `(unknown, ${fmt3(outcome.intervalEndS)}] s — tick_s unavailable`
-                      : `(${fmt3(outcome.intervalStartS)}, ${fmt3(outcome.intervalEndS)}] s`
-                  }
-                />
-                <Line label="ticks_in_step" value={outcome.ticksInStep} />
-                <Line label="tick" value={outcome.tick} />
-                {outcome.reward ? (
-                  <>
-                    <Line label="reward total" value={fmt3(outcome.reward.total)} />
-                    {outcome.reward.components &&
-                      Object.entries(outcome.reward.components).map(([k, v], i) => (
-                        <div key={k} className="flex items-center gap-2 text-xs">
-                          <span
-                            aria-hidden="true"
-                            className="w-2 h-2 rounded-sm flex-shrink-0"
-                            style={{ backgroundColor: componentColor(i) }}
-                          />
-                          <span className="text-muted flex-1 truncate">{k}</span>
-                          <span className="font-mono tabular-nums">{fmt3(v)}</span>
-                        </div>
-                      ))}
-                    <div className="flex gap-1 flex-wrap">
-                      {outcome.reward.source && (
-                        <Badge
-                          label={`source: ${outcome.reward.source}`}
-                          colorClass="bg-gray-100 text-ink-2 border border-gray-300"
-                        />
-                      )}
-                      {outcome.reward.valid && (
-                        <Badge
-                          label={`valid: ${Object.entries(outcome.reward.valid)
-                            .map(([k, v]) => `${k}=${v}`)
-                            .join(' ')}`}
-                          colorClass="bg-gray-100 text-ink-2 border border-gray-300"
-                        />
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <Unavailable>reward: not recorded for this decision</Unavailable>
-                )}
-                {typeof join.record.legacy_reward === 'number' && (
-                  <Line label="legacy_reward" value={fmt3(join.record.legacy_reward)} />
-                )}
-                <div className="text-[10px] text-muted">
-                  Reward is network-wide, from steps.jsonl.
-                </div>
-              </>
-            )}
-            {incident !== null && (
-              <div className="flex flex-col gap-1 mt-1">
-                <div className="text-[11px] text-muted">
-                  Incident links of {focusSlot !== null ? slotName(focusSlot) : ''} at t ={' '}
-                  {fmt3(frame.time)} s (shown frame)
-                </div>
-                {incident.length === 0 && <Unavailable>no links at this frame</Unavailable>}
-                {incident.map((e) => (
-                  <div
-                    key={e.key}
-                    className="flex flex-wrap gap-x-3 text-xs font-mono tabular-nums"
-                  >
-                    <span className="text-ink-2">↔ node {e.peer}</span>
-                    {e.link.sinr !== undefined && <span>SINR {e.link.sinr.toFixed(1)} dB</span>}
-                    {e.mcs !== undefined && <span>MCS {e.mcs}</span>}
-                    {e.rx !== undefined && <span>RX {e.rx.toFixed(1)} dBm</span>}
-                    {e.link.capacityMbps !== undefined && (
-                      <span>{e.link.capacityMbps.toFixed(1)} Mbps</span>
-                    )}
-                    <span className="text-muted">
-                      {e.link.connected ? e.link.condition : 'down'}
-                    </span>
-                  </div>
-                ))}
+                </span>
               </div>
-            )}
-          </Group>
+            ))}
+          </div>
+          <div className="text-base text-ink-2">Faded moves were not allowed at this point.</div>
+        </section>
+      )}
+
+      {action && !isUnavailable(action) && action.revalidatedSlots.length > 0 && (
+        <div className="text-base text-ink-2">
+          The simulator re-checked the move for{' '}
+          {action.revalidatedSlots.map((s) => slotName(s)).join(', ')} before applying it.
         </div>
       )}
 
-      <Disclosure title="Raw record">
-        <pre className="text-[10px] font-mono text-ink-2 whitespace-pre-wrap break-all max-h-72 overflow-auto rounded-lg bg-white/70 border border-hairline p-2">
-          {raw.text}
-        </pre>
-        {raw.truncated && <div className="text-[11px] text-muted mt-1">truncated at 64 KB</div>}
-      </Disclosure>
+      {incident !== null && focusSlot !== null && (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-lg font-semibold tracking-tight text-ink-title">
+            Links of {slotName(focusSlot)} at {fmt1(frame.time)} s
+          </h3>
+          {incident.length === 0 ? (
+            <div className="text-base text-ink-2">No links at this moment.</div>
+          ) : (
+            incident.map((e) => (
+              <div
+                key={e.key}
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 border-t border-hairline first:border-0 text-base tabular-nums"
+              >
+                <span className="font-medium text-ink">Node {e.peer}</span>
+                {e.link.sinr !== undefined && (
+                  <span className="text-ink-2">SINR {e.link.sinr.toFixed(1)} dB</span>
+                )}
+                {e.mcs !== undefined && <span className="text-ink-2">MCS {e.mcs}</span>}
+                {e.rx !== undefined && <span className="text-ink-2">RX {e.rx.toFixed(1)} dBm</span>}
+                {e.link.capacityMbps !== undefined && (
+                  <span className="text-ink-2">{e.link.capacityMbps.toFixed(1)} Mbps</span>
+                )}
+                <span className="text-ink-2">{e.link.connected ? e.link.condition : 'down'}</span>
+              </div>
+            ))
+          )}
+        </section>
+      )}
+
+      <section className="flex flex-col">
+        <h3 className="text-lg font-semibold tracking-tight text-ink-title pb-2">Record</h3>
+        <Line label="Decision time" value={`${fmt1(join.record.time_s)} s`} />
+        <Line label="Simulator tick" value={join.record.tick} />
+        {outcome && outcome.intervalStartS !== null && (
+          <Line
+            label="Reward measured over"
+            value={`${fmt1(outcome.intervalStartS)} s to ${fmt1(outcome.intervalEndS)} s`}
+          />
+        )}
+        {input && input.status !== 'missing_source' && input.obsSha256 && (
+          <Line
+            label="Observation hash"
+            value={<span title={input.obsSha256}>{input.obsSha256.slice(0, 12)}…</span>}
+          />
+        )}
+        {action && !isUnavailable(action) && (
+          <Line
+            label="Moves asked for"
+            value={action.requested.map((a) => words(meanings[a] ?? `#${a}`)).join(', ')}
+          />
+        )}
+      </section>
+
+      <div className="border-t border-hairline">
+        {join.sourceRecord?.facts !== undefined && (
+          <Disclosure title="Facts the model saw">
+            <pre className="text-sm font-mono text-ink-2 whitespace-pre-wrap break-all max-h-64 overflow-auto tile p-3">
+              {JSON.stringify(join.sourceRecord.facts, null, 1).slice(0, 8 * 1024)}
+            </pre>
+          </Disclosure>
+        )}
+        <Disclosure title="Raw record">
+          <pre className="text-sm font-mono text-ink-2 whitespace-pre-wrap break-all max-h-72 overflow-auto tile p-3">
+            {raw.text}
+          </pre>
+          {raw.truncated && <div className="text-base text-ink-2 mt-2">Truncated at 64 KB</div>}
+        </Disclosure>
+      </div>
     </div>
   )
 }

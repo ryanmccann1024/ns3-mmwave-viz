@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { Evaluation } from '../../lib/experimentIndex'
 import { describeFeature } from '../../lib/observationHelp'
-import { Panel } from '../ui/Panel'
+import { Segmented } from '../ui/Segmented'
+import { MOTION } from '../../styles/motion'
 import { Disclosure } from '../ui/Disclosure'
 
 type Rec = Record<string, unknown>
@@ -17,13 +18,6 @@ function featureGroup(name: string): string {
   if (/demand|deliver|connect|unroutable|service_gap/.test(name)) return 'Service'
   if (/\.active|\.present|\.valid/.test(name)) return 'Presence / validity'
   return 'Position / motion'
-}
-
-const GROUP_COLORS: Record<string, string> = {
-  'Position / motion': '#3566c6',
-  'Radio / link': '#b96b25',
-  Service: '#22846c',
-  'Presence / validity': '#8160b7',
 }
 
 const REWARD_HELP: Record<string, string> = {
@@ -79,176 +73,170 @@ export function ExperimentSetup({ evaluation }: { evaluation: Evaluation }) {
   const decisionSeconds = contract?.decision_interval_s
   const decisions = typeof contract?.num_decisions === 'number' ? contract.num_decisions : null
 
+  const nodes = slots.filter(Boolean).length
+  const words = (key: string) => {
+    const t = key
+      .replace(/_+/g, ' ')
+      .trim()
+      .replace(/\b(sinr|snr|los|nlos|mcs)\b/gi, (w) => w.toUpperCase())
+    return t.charAt(0).toUpperCase() + t.slice(1)
+  }
+
   return (
-    <Panel
-      title={`Observation · action · reward — ${evaluation.label}`}
-      meta={`trained with seed ${evaluation.trainingSeed ?? 'none'}`}
-      bodyClassName="px-5 pb-6"
-    >
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 text-sm leading-relaxed">
-        <div className="tile p-5">
-          <div className="text-sm font-semibold text-accent-ink mb-2">1 · What the model sees</div>
-          <div className="text-lg font-semibold text-ink">
-            {String(observation.schema_id ?? 'Not recorded')}
-          </div>
-          <p className="text-sm text-ink-2 mt-2">
-            {names.length || observation.obs_dim?.toString() || '?'} values at each decision. The
-            feature explorer below explains every value and its saved bounds.
-          </p>
-          {names.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-4">
-              {groups.map((item) => (
+    <div className="flex flex-col gap-8 sm:gap-10">
+      <SetupSection title="At a glance">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+          <SetupFigure
+            value={String(names.length || observation.obs_dim || '–')}
+            label="Values the model sees at each decision"
+          />
+          <SetupFigure
+            value={String(nodes)}
+            label={nodes === 1 ? 'Node it controls' : 'Nodes it controls'}
+          />
+          <SetupFigure
+            value={decisions === null ? '–' : decisions.toLocaleString()}
+            label={`Decisions per episode, one every ${decisionSeconds ?? '?'} s`}
+          />
+        </div>
+      </SetupSection>
+
+      {actions.length > 0 && (
+        <SetupSection title="Actions">
+          <div className="glass p-6 flex flex-col gap-4">
+            <p className="text-base text-ink-2 leading-relaxed max-w-3xl">
+              At each decision every controlled node picks one of these moves. Moves that would
+              leave the area are blocked; hold is always allowed.
+            </p>
+            <div className="self-start max-w-full flex rounded-xl border border-hairline bg-white overflow-hidden divide-x divide-hairline">
+              {actions.map((action, index) => (
                 <span
-                  key={item.name}
-                  className="inline-flex items-center gap-2 rounded-full bg-white/80 border border-hairline px-3 py-1 text-xs text-ink-2"
+                  key={`${action}-${index}`}
+                  className="h-11 leading-[2.75rem] px-6 text-center text-base font-medium text-ink whitespace-nowrap"
                 >
-                  <i
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: GROUP_COLORS[item.name] }}
-                  />
-                  {item.name} · {item.count}
+                  {words(action)}
                 </span>
               ))}
             </div>
-          )}
-        </div>
-        <div className="tile p-5">
-          <div className="text-sm font-semibold text-accent-ink mb-2">2 · What it can do</div>
-          <div className="text-lg font-semibold text-ink">
-            {slots.filter(Boolean).length} controlled node
-            {slots.filter(Boolean).length === 1 ? '' : 's'}
           </div>
-          <p className="text-sm text-ink-2 mt-2">
-            One choice per active slot each decision. A mask disables moves that cross the
-            configured boundary; hold remains available.
-          </p>
-          <div className="flex flex-wrap gap-2 mt-4">
-            {actions.map((action, index) => (
-              <span
-                key={`${action}-${index}`}
-                className="rounded-lg bg-white/80 border border-hairline px-2.5 py-1 text-sm text-ink-2"
-              >
-                {index} · {action}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="tile p-5">
-          <div className="text-sm font-semibold text-accent-ink mb-2">
-            3 · What it is rewarded for
-          </div>
-          <div className="text-lg font-semibold text-ink">
-            {components.length === 1
-              ? components[0].replace(/_/g, ' ')
-              : components.length
-                ? 'Weighted measured terms'
-                : String(reward.authority ?? 'Not recorded')}
-          </div>
-          <div className="flex flex-col gap-2 mt-3">
-            {components.map((component, index) => (
-              <div key={component} className="bg-white/80 rounded-lg border border-hairline p-3">
-                <div className="font-medium text-ink">
-                  {weightLabel(weights[index] ?? 1)} × {component.replace(/_/g, ' ')}
-                </div>
-                <div className="text-sm text-ink-2 mt-1">
-                  {REWARD_HELP[component] ?? 'Measured after the completed decision window.'}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-sm text-muted mt-3">
-            One reward per {decisionSeconds ?? '?'}-second decision. Episode return sums up to{' '}
-            {decisions ?? '?'} such rewards.
-          </p>
-        </div>
-      </div>
+        </SetupSection>
+      )}
 
-      {names.length > 0 && (
-        <section className="mt-6 border-t border-ink/[0.08] pt-5">
-          <div className="flex flex-col gap-1 mb-4">
-            <h3 className="text-lg font-semibold text-ink-title">Explore the observation</h3>
-            <p className="text-sm text-ink-2">
-              Select any feature to see what it means, which node it belongs to, and how its number
-              is calculated. “_n” means normalized; the bounds below are allowed values, not the
-              current value.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 mb-4">
-            <input
-              aria-label="Search observation features"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by feature, such as SINR, x_n, or present"
-              className="w-full rounded-xl bg-white/80 border border-hairline px-4 py-2.5 text-sm text-ink outline-none focus:border-accent"
-            />
-            <div className="flex flex-wrap gap-2">
-              {['All', ...groups.map((item) => item.name)].map((item) => (
-                <button
-                  key={item}
-                  onClick={() => setGroup(item)}
-                  className={`rounded-full px-3 py-1.5 text-sm border transition-colors ${group === item ? 'bg-accent text-white border-accent' : 'bg-white/70 text-ink-2 border-hairline hover:bg-white'}`}
+      <SetupSection title="Reward">
+        <div className="glass p-6 flex flex-col gap-4">
+          <p className="text-base text-ink-2 leading-relaxed max-w-3xl">
+            After each decision the model gets one reward: each measured term times its weight,
+            added up. The episode return is the sum over all decisions.
+          </p>
+          {components.length > 0 ? (
+            <div className="flex flex-col divide-y divide-hairline border-t border-hairline">
+              {components.map((component, index) => (
+                <div
+                  key={component}
+                  className="py-4 grid grid-cols-[4.5rem_1fr] md:grid-cols-[4.5rem_16rem_1fr] gap-x-4 gap-y-1 items-baseline"
                 >
-                  {item}
-                  {item === 'All'
-                    ? ` · ${names.length}`
-                    : ` · ${groups.find((g) => g.name === item)?.count}`}
-                </button>
+                  <span className="text-lg font-semibold tabular-nums text-ink-title">
+                    {weightLabel(weights[index] ?? 1)}
+                  </span>
+                  <span className="text-lg font-medium text-ink">{words(component)}</span>
+                  <span className="col-start-2 md:col-start-3 text-base text-ink-2 leading-relaxed">
+                    {REWARD_HELP[component] ?? 'Measured after the completed decision window.'}
+                  </span>
+                </div>
               ))}
             </div>
+          ) : (
+            <div className="text-base text-ink-2">{String(reward.authority ?? 'Not recorded')}</div>
+          )}
+        </div>
+      </SetupSection>
+
+      {names.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <header className="flex items-center justify-between gap-4 flex-wrap">
+            <h2 className="text-2xl font-semibold tracking-tight text-ink-title">
+              Observation features
+            </h2>
+            <label className="w-full sm:w-72">
+              <span className="sr-only">Search observation features</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search, such as SINR or x_n"
+                className={`w-full h-11 px-4 rounded-xl text-base text-ink bg-white border border-hairline shadow-control placeholder:text-ink-2/60 focus-visible:border-accent ${MOTION.colors}`}
+              />
+            </label>
+          </header>
+          <div className="max-w-full overflow-x-auto">
+            <Segmented
+              size="lg"
+              options={['All', ...groups.map((item) => item.name)].map((item) => ({
+                value: item,
+                label: `${item} · ${item === 'All' ? names.length : groups.find((g) => g.name === item)?.count}`,
+              }))}
+              value={group}
+              onChange={setGroup}
+            />
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
             <div
-              className="tile p-2 max-h-96 overflow-y-auto"
+              className="glass p-2 h-[30rem] overflow-y-auto"
               aria-label="Observation feature list"
             >
               {filtered.length === 0 && (
-                <div className="p-4 text-sm text-muted">No features match this search.</div>
+                <div className="p-4 text-base text-ink-2">No features match this search.</div>
               )}
               {filtered.map(({ name, index }) => (
                 <button
                   key={`${name}-${index}`}
+                  type="button"
                   onClick={() => setSelectedIndex(index)}
                   aria-pressed={selectedIndex === index}
-                  className={`w-full text-left rounded-lg px-3 py-2.5 mb-1 border transition-colors ${selectedIndex === index ? 'bg-accent-wash border-accent/30' : 'bg-white/60 border-transparent hover:bg-white'}`}
+                  className={`w-full flex items-center gap-3 text-left rounded-xl px-4 py-2.5 ${MOTION.colors} ${selectedIndex === index ? 'bg-accent-wash text-accent-ink' : 'text-ink hover:bg-white/80'}`}
                 >
-                  <span className="text-xs text-muted tabular-nums mr-2">{index}</span>
-                  <span className="text-sm font-mono text-ink break-all">{name}</span>
+                  <span className="w-8 flex-shrink-0 text-sm text-ink-2 tabular-nums">{index}</span>
+                  <span className="text-base font-mono break-all">{name}</span>
                 </button>
               ))}
             </div>
-            <div className="tile p-5 min-h-56" aria-live="polite">
+            <div
+              className="glass p-6 h-[30rem] overflow-y-auto flex flex-col gap-4"
+              aria-live="polite"
+            >
               {help && (
                 <>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-accent-ink">
-                    Feature {selectedIndex}
+                  <div className="flex items-baseline justify-between gap-4">
+                    <h3 className="text-xl font-semibold tracking-tight text-ink-title">
+                      {help.title}
+                    </h3>
+                    <span className="flex-shrink-0 text-base text-ink-2 tabular-nums">
+                      Feature {selectedIndex}
+                    </span>
                   </div>
-                  <h4 className="text-lg font-semibold text-ink-title mt-1">{help.title}</h4>
-                  <div className="text-sm text-muted mt-1">{help.owner}</div>
-                  <p className="text-sm text-ink-2 leading-relaxed mt-4">{help.meaning}</p>
-                  <div className="mt-4 rounded-lg bg-white/80 border border-hairline p-3 text-sm text-ink-2">
-                    <div className="font-semibold text-ink mb-1">How this value is calculated</div>
+                  <div className="text-base text-ink-2">{help.owner}</div>
+                  <p className="text-base text-ink leading-relaxed">{help.meaning}</p>
+                  <div className="tile p-4 text-base text-ink-2 leading-relaxed">
+                    <div className="font-semibold text-ink mb-1">How it is calculated</div>
                     {help.calculation}
                   </div>
-                  <div className="text-sm text-ink-2 mt-4">
-                    Allowed bounds:{' '}
+                  <div className="text-base text-ink-2">
+                    Allowed range{' '}
                     <span className="font-mono text-ink">
                       [{boundLabel(low[selectedIndex])}, {boundLabel(high[selectedIndex])}]
                     </span>
                   </div>
-                  <div className="text-xs text-muted mt-2 font-mono break-all">
-                    Saved name: {selected}
-                  </div>
+                  <div className="text-sm text-ink-2 font-mono break-all">{selected}</div>
                 </>
               )}
             </div>
           </div>
           {Object.keys(normalization).length > 0 && (
-            <div className="mt-4">
-              <Disclosure title="Show the original saved normalization rules">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-ink-2">
+            <div className="glass px-6">
+              <Disclosure title="Saved normalization rules">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-base text-ink-2">
                   {Object.entries(normalization).map(([key, value]) => (
-                    <div key={key} className="tile p-3">
-                      <span className="font-medium text-ink">{key.replace(/_/g, ' ')}:</span>{' '}
+                    <div key={key} className="tile p-4">
+                      <span className="font-medium text-ink">{words(key)}:</span>{' '}
                       {Array.isArray(value) ? value.join(' to ') : String(value)}
                     </div>
                   ))}
@@ -258,10 +246,24 @@ export function ExperimentSetup({ evaluation }: { evaluation: Evaluation }) {
           )}
         </section>
       )}
-      <p className="text-sm text-muted mt-5">
-        Training seed updates the model; model-selection seed chooses its checkpoint; evaluation
-        seeds test the frozen model. These are different jobs.
-      </p>
-    </Panel>
+    </div>
+  )
+}
+
+function SetupSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-4">
+      <h2 className="text-2xl font-semibold tracking-tight text-ink-title">{title}</h2>
+      {children}
+    </section>
+  )
+}
+
+function SetupFigure({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="glass p-6 min-w-0">
+      <div className="text-4xl font-semibold tracking-tight text-ink-title">{value}</div>
+      <div className="mt-1 text-base font-medium text-ink-2">{label}</div>
+    </div>
   )
 }

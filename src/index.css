@@ -29,9 +29,12 @@ body {
   }
 }
 
-/* Thin neutral scrollbars instead of the browser slab */
+/* Thin neutral scrollbars, invisible until the element scrolls (see lib/scrollbars.ts) */
 * {
   scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+[data-scrolling] {
   scrollbar-color: rgba(10, 19, 36, 0.2) transparent;
 }
 ::-webkit-scrollbar {
@@ -42,10 +45,13 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(10, 19, 36, 0.2);
+  background-color: transparent;
   background-clip: content-box;
   border: 3px solid transparent;
   border-radius: 999px;
+}
+[data-scrolling]::-webkit-scrollbar-thumb {
+  background-color: rgba(10, 19, 36, 0.2);
 }
 
 circle {

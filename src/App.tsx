@@ -7,23 +7,24 @@ import type { RunEntry } from './lib/assembleRuns'
 import type { Episode, ExperimentRoot } from './lib/experimentIndex'
 import { episodeFiles, readPlaybackFiles } from './lib/experimentIndex'
 import type { TrainingEpisode, TrainingRun } from './lib/trainingRun'
-import { folderLabel } from './lib/format'
+import { experimentGroup, folderLabel, groupExperimentRoots } from './lib/format'
 import type { Section } from './components/shell/NavRail'
 import { NavRail } from './components/shell/NavRail'
 import type { Crumb } from './components/ui/Breadcrumbs'
 import { HomePage } from './components/pages/HomePage'
 import { RunsPage } from './components/pages/RunsPage'
 import { ExperimentsPage } from './components/pages/ExperimentsPage'
+import { ExperimentGroupPage } from './components/pages/ExperimentGroupPage'
 import type { ExperimentTab } from './components/pages/ExperimentPage'
 import { ExperimentPage } from './components/pages/ExperimentPage'
 import type { PlayerPreferences } from './components/pages/PlayerPage'
 import { EMPTY_PLAYER_PREFERENCES, PlayerPage } from './components/pages/PlayerPage'
 import { MOTION } from './styles/motion'
-import { policyLabel, rewardLabel } from './lib/rlLabels'
+import { experimentLabel, policyLabel, rewardLabel } from './lib/rlLabels'
 import { TrainingRunPage, trainingRunTitle } from './components/pages/TrainingRunPage'
 import { Note } from './components/ExperimentStatus'
 
-type Page = Section | 'experiment' | 'training' | 'player'
+type Page = Section | 'group' | 'experiment' | 'training' | 'player'
 
 /** What the player is showing, and the page it returns to */
 type Playing =
@@ -42,6 +43,8 @@ export default function App() {
   const [episodeError, setEpisodeError] = useState<string | null>(null)
   const [experimentTab, setExperimentTab] = useState<ExperimentTab>('results')
   const [trainingRoot, setTrainingRoot] = useState<string | null>(null)
+  /** folder key of the experiment whose scenarios are listed (or whose scenario is open) */
+  const [groupKey, setGroupKey] = useState<string | null>(null)
   const [trainingError, setTrainingError] = useState<string | null>(null)
   // Compatible player choices (string node id, tab, chart metric) carried across episodes;
   // the keyed PlayerPage remount still resets everything episode-relative
@@ -80,8 +83,14 @@ export default function App() {
     if (!workspace.catalog) return
     setEpisodeError(null)
     setExperimentTab('results')
+    setGroupKey(experimentGroup(root.root).key)
     setPage('experiment')
     session.openExperiment(workspace.catalog, root)
+  }
+
+  function openGroup(key: string) {
+    setGroupKey(key)
+    setPage('group')
   }
 
   function openTrainingRun(root: string) {
@@ -128,8 +137,17 @@ export default function App() {
   }
 
   const home: Crumb = { label: 'Home', onClick: () => navigate('home') }
+  const experiments: Crumb = { label: 'RL experiments', onClick: () => navigate('experiments') }
+  const group =
+    groupKey === null
+      ? null
+      : (groupExperimentRoots(workspace.experimentRoots).find((g) => g.key === groupKey) ?? null)
+  const groupTitle = group ? (group.name ?? (group.key || 'This folder')) : null
+  // The experiment a scenario belongs to, as a way back to its list of scenarios
+  const groupCrumbs: Crumb[] =
+    group && groupTitle ? [{ label: groupTitle, onClick: () => openGroup(group.key) }] : []
   const experimentName = session.experiment
-    ? folderLabel(session.experiment.root).name || session.experiment.name
+    ? experimentLabel(folderLabel(session.experiment.root).name || session.experiment.name)
     : ''
 
   function playerContext(): { parents: Crumb[]; title: string; back: () => void } {
@@ -139,11 +157,7 @@ export default function App() {
         setPage('experiment')
       }
       return {
-        parents: [
-          home,
-          { label: 'RL experiments', onClick: () => navigate('experiments') },
-          { label: experimentName, onClick: back },
-        ],
+        parents: [home, experiments, ...groupCrumbs, { label: experimentName, onClick: back }],
         title: `${session.evaluation ? rewardLabel(session.evaluation) : playing.episode.label} · ${policyLabel(playing.episode.policy)} · evaluation seed ${playing.episode.seed}`,
         back,
       }
@@ -156,7 +170,8 @@ export default function App() {
       return {
         parents: [
           home,
-          { label: 'RL experiments', onClick: () => navigate('experiments') },
+          experiments,
+          ...groupCrumbs,
           { label: trainingRunTitle(playing.root), onClick: back },
         ],
         title: `Training episode ${playing.episode.index}`,
@@ -176,16 +191,22 @@ export default function App() {
 
   // The nav rail is hidden in the player, so only list pages need a highlighted section
   const section: Section =
-    page === 'experiment' || page === 'training' || page === 'player' ? 'experiments' : page
+    page === 'group' || page === 'experiment' || page === 'training' || page === 'player'
+      ? 'experiments'
+      : page
 
   const pageKey =
     page === 'player'
       ? `player:${playing?.kind === 'run' ? playing.run.key : playing ? playing.episode.dir : ''}`
-      : page === 'experiment'
-        ? `experiment:${session.experiment?.root ?? ''}`
-        : page === 'training'
-          ? `training:${trainingRoot ?? ''}`
-          : page
+      : page === 'group'
+        ? `group:${groupKey ?? ''}`
+        : page === 'experiment'
+          ? `experiment:${session.experiment?.root ?? ''}`
+          : page === 'training'
+            ? `training:${trainingRoot ?? ''}`
+            : page === 'home'
+              ? `home:${workspace.loadingDir ? 'loading' : (workspace.dirName ?? '')}`
+              : page
 
   let content
   if (page === 'player') {
@@ -241,6 +262,7 @@ export default function App() {
           onOpenEpisode={openEpisode}
           onHome={() => navigate('home')}
           onExperiments={() => navigate('experiments')}
+          groupCrumbs={groupCrumbs}
           tab={experimentTab}
           onTab={setExperimentTab}
           trainingRoots={workspace.allTrainingRoots}
@@ -251,21 +273,29 @@ export default function App() {
       ) : (
         <div className="text-sm text-muted">Reading experiment…</div>
       )
-  } else if (page === 'runs') {
+  } else if (page === 'group' && group && groupTitle) {
     content = (
-      <RunsPage
-        workspace={workspace}
+      <ExperimentGroupPage
+        catalog={workspace.catalog}
+        title={groupTitle}
+        roots={group.roots}
         onHome={() => navigate('home')}
-        onOpenRun={(run) => openRun(run, 'runs')}
+        onExperiments={() => navigate('experiments')}
+        onOpenScenario={openExperiment}
       />
     )
+  } else if (page === 'runs') {
+    content = <RunsPage workspace={workspace} onOpenRun={(run) => openRun(run, 'runs')} />
   } else if (page === 'experiments') {
     content = (
       <ExperimentsPage
         workspace={workspace}
-        onHome={() => navigate('home')}
-        onOpenExperiment={openExperiment}
-        onOpenTrainingRun={openTrainingRun}
+        onOpenGroup={openGroup}
+        onOpenTrainingRun={(root) => {
+          // A training run listed on its own belongs to no experiment
+          setGroupKey(null)
+          openTrainingRun(root)
+        }}
       />
     )
   } else if (page === 'training' && trainingRoot !== null && workspace.catalog) {
@@ -275,6 +305,7 @@ export default function App() {
         root={trainingRoot}
         onHome={() => navigate('home')}
         onExperiments={() => navigate('experiments')}
+        groupCrumbs={groupCrumbs}
         onPlay={playTrainingEpisode}
         openError={trainingError}
       />
@@ -296,10 +327,10 @@ export default function App() {
         <NavRail active={section} onNavigate={navigate} workspace={workspace} />
       )}
       <main
-        className={`flex-1 min-w-0 flex flex-col ${page === 'player' ? 'min-h-0' : 'overflow-y-auto'}`}
+        className={`flex-1 min-w-0 flex flex-col ${page === 'player' ? 'min-h-0' : 'overflow-y-auto [scrollbar-gutter:stable]'}`}
       >
-        {/* Each page change fades in (opacity only, no exit animation, no translate on the canvas) */}
-        <div key={pageKey} className={`flex flex-col flex-1 min-h-0 ${MOTION.enterFade}`}>
+        {/* Each page change fades in (opacity only, so nothing shifts or flashes a scrollbar) */}
+        <div key={pageKey} className={`flex flex-col flex-1 min-h-0 ${MOTION.page}`}>
           {page === 'player' ? (
             content
           ) : (

@@ -8,6 +8,7 @@ import {
 } from '../../hooks/useMetricSeries'
 import { MetricChart } from './MetricChart'
 import { Segmented } from '../ui/Segmented'
+import { MOTION } from '../../styles/motion'
 
 interface Props {
   frames: SimFrame[]
@@ -43,11 +44,10 @@ export function ChartsView({
 
   return (
     <div className="glass flex flex-col h-full overflow-hidden">
-      <div className="px-4 pt-3 pb-2 flex items-center gap-3 flex-shrink-0 min-w-0">
-        <h2 className="text-[13px] font-semibold text-ink-title flex-shrink-0">Metrics</h2>
+      <div className="px-5 pt-4 pb-3 flex flex-col gap-3 flex-shrink-0 min-w-0">
         <div className="overflow-x-auto min-w-0">
           <Segmented
-            size="sm"
+            size="lg"
             options={METRICS.map((m) => ({
               value: m.id,
               label: m.label,
@@ -57,8 +57,12 @@ export function ChartsView({
             onChange={setSelectedMetric}
           />
         </div>
+        <h2 className="text-xl font-semibold tracking-tight text-ink-title">
+          {config.label}
+          {config.unit && <span className="font-medium text-ink-2"> ({config.unit})</span>}
+        </h2>
       </div>
-      <div className="flex-1 min-h-0 px-2 pb-2">
+      <div key={selectedMetric} className={`flex-1 min-h-0 ${MOTION.enterFade}`}>
         <MetricChart
           series={series}
           config={config}
