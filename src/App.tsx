@@ -1,140 +1,62 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useSimData } from './hooks/useSimData'
-import { useSimLog } from './hooks/useSimLog'
-import { NODE_LABELS } from './styles/tokens'
-import { freqLabel } from './lib/format'
+import { usePlaybackLog } from './hooks/usePlaybackLog'
+import { useExperimentSession } from './hooks/useExperimentSession'
+import { useWorkspace } from './hooks/useWorkspace'
 import type { RunEntry } from './lib/assembleRuns'
-import { FileLoader } from './components/FileLoader'
-import { NetworkCanvas } from './components/canvas/NetworkCanvas'
-import { PlaybackControls } from './components/PlaybackControls'
-import { InfoPanel } from './components/InfoPanel'
-import { StatsBar } from './components/StatsBar'
-import { Terminal } from './components/ui/Terminal'
-import { ChartsView } from './components/charts/ChartsView'
+import type { Episode, ExperimentRoot } from './lib/experimentIndex'
+import { episodeFiles, readPlaybackFiles } from './lib/experimentIndex'
+import type { TrainingEpisode, TrainingRun } from './lib/trainingRun'
+import { folderLabel } from './lib/format'
+import type { Section } from './components/shell/NavRail'
+import { NavRail } from './components/shell/NavRail'
+import type { Crumb } from './components/ui/Breadcrumbs'
+import { HomePage } from './components/pages/HomePage'
+import { RunsPage } from './components/pages/RunsPage'
+import { ExperimentsPage } from './components/pages/ExperimentsPage'
+import type { ExperimentTab } from './components/pages/ExperimentPage'
+import { ExperimentPage } from './components/pages/ExperimentPage'
+import { PlayerPage } from './components/pages/PlayerPage'
+import { policyLabel, rewardLabel } from './lib/rlLabels'
+import { TrainingRunPage, trainingRunTitle } from './components/pages/TrainingRunPage'
+import { Note } from './components/ExperimentStatus'
+
+type Page = Section | 'experiment' | 'training' | 'player'
+
+/** What the player is showing, and the page it returns to */
+type Playing =
+  | { kind: 'run'; run: RunEntry; from: Section }
+  | { kind: 'episode'; episode: Episode }
+  | { kind: 'training'; root: string; episode: TrainingEpisode }
 
 export default function App() {
+  const workspace = useWorkspace()
   const sim = useSimData()
-  const { logs, log, clear: clearLogs } = useSimLog()
-  const [selectedNode, setSelectedNode] = useState<number | null>(null)
-  const [selectedLink, setSelectedLink] = useState<string | null>(null)
-  const [selectedFlow, setSelectedFlow] = useState<{ src: number; dst: number } | null>(null)
-  const [terminalOpen, setTerminalOpen] = useState(true)
-  const [activeView, setActiveView] = useState<'canvas' | 'charts' | 'split'>('canvas')
-  const [compact, setCompact] = useState(false)
+  const playback = usePlaybackLog(sim)
+  const session = useExperimentSession()
+  const [page, setPage] = useState<Page>('home')
+  const [playing, setPlaying] = useState<Playing | null>(null)
+  const [openingEpisode, setOpeningEpisode] = useState<Episode | null>(null)
+  const [episodeError, setEpisodeError] = useState<string | null>(null)
+  const [experimentTab, setExperimentTab] = useState<ExperimentTab>('results')
+  const [trainingRoot, setTrainingRoot] = useState<string | null>(null)
+  const [trainingError, setTrainingError] = useState<string | null>(null)
 
-  // Log when files are loaded; clear log on each new load
-  const prevLoadedRef = useRef(false)
-  const resetFrameIdxRef = useRef<number | null>(null)
-  useEffect(() => {
-    if (sim.loaded && !prevLoadedRef.current && sim.meta) {
-      clearLogs()
-      resetFrameIdxRef.current = 0
-      log(
-        'info',
-        `Loaded ${sim.meta.scenario} · ${freqLabel(sim.meta.frequency)} · ${sim.meta.numNodes} nodes · ${sim.frames.length} frames`,
-        0
-      )
-    }
-    prevLoadedRef.current = sim.loaded
-  }, [sim.loaded, sim.meta, sim.frames.length, log, clearLogs])
-
-  // Log playback events and frame-level events
-  const prevPlayingRef = useRef(false)
-  const prevFrameIdxRef = useRef(0)
-
-  useEffect(() => {
-    // Handle reset signals from load/clear handlers
-    if (resetFrameIdxRef.current !== null) {
-      prevFrameIdxRef.current = resetFrameIdxRef.current
-      resetFrameIdxRef.current = null
-    }
-
-    if (!sim.loaded || !sim.currentFrame) return
-
-    const playing = sim.playing
-    const frameIndex = sim.frameIndex
-    const frame = sim.currentFrame
-    const prevPlaying = prevPlayingRef.current
-    const prevFrameIndex = prevFrameIdxRef.current
-
-    if (playing && !prevPlaying) {
-      if (prevFrameIndex >= sim.frames.length - 1 && frameIndex === 0) {
-        clearLogs()
-      }
-      log('info', `Playback started at frame ${frameIndex + 1}`, frame.time)
-    } else if (!playing && prevPlaying && frameIndex < sim.frames.length - 1) {
-      log('info', `Paused at t=${frame.time.toFixed(3)}s`, frame.time)
-    } else if (!playing && prevPlaying && frameIndex >= sim.frames.length - 1) {
-      log('info', `Playback finished (${sim.frames.length} frames)`, frame.time)
-    }
-
-    if (frameIndex !== prevFrameIndex && frameIndex > 0) {
-      const prevFrame = sim.frames[prevFrameIndex]
-      if (prevFrame) {
-        for (const node of frame.nodes) {
-          const prev = prevFrame.nodes.find((n) => n.id === node.id)
-          if (!prev) continue
-          const label = NODE_LABELS[node.nodeType] ?? node.nodeType.toUpperCase()
-          if (node.active && !prev.active) {
-            log('event', `Node ${node.id} (${label}) activated`, frame.time)
-          } else if (!node.active && prev.active) {
-            log('warn', `Node ${node.id} (${label}) went offline`, frame.time)
-          }
-        }
-
-        for (const link of frame.links) {
-          const prev = prevFrame.links.find((l) => l.nodeA === link.nodeA && l.nodeB === link.nodeB)
-          if (!prev) continue
-          if (link.connected && !prev.connected) {
-            log(
-              'event',
-              `Link ${link.nodeA}-${link.nodeB} connected (${link.condition}${link.sinr !== undefined ? `, ${link.sinr.toFixed(1)} dB` : ''})`,
-              frame.time
-            )
-          } else if (!link.connected && prev.connected) {
-            log('warn', `Link ${link.nodeA}-${link.nodeB} dropped`, frame.time)
-          }
-        }
-      }
-    }
-
-    prevPlayingRef.current = playing
-    prevFrameIdxRef.current = frameIndex
-  })
-
-  function handleSeek(index: number) {
-    if (sim.currentFrame) {
-      const targetFrame = sim.frames[index]
-      if (targetFrame)
-        log(
-          'info',
-          `Seek → frame ${index + 1} (t=${targetFrame.time.toFixed(3)}s)`,
-          targetFrame.time
-        )
-    }
-    sim.seek(index)
+  function navigate(section: Section) {
+    closePlayer()
+    setPage(section)
   }
 
-  function handleSetSpeed(s: Parameters<typeof sim.setSpeed>[0]) {
-    log('info', `Speed set to ${s}×`, sim.currentFrame?.time ?? 0)
-    sim.setSpeed(s)
+  function closePlayer() {
+    sim.pause()
+    sim.reset()
+    session.clearEpisode()
+    setPlaying(null)
   }
 
-  function handleClearLogs() {
-    clearLogs()
-    resetFrameIdxRef.current = sim.frameIndex
-  }
-
-  function handleSelectNode(id: number | null) {
-    setSelectedNode(id)
-    setSelectedLink(null)
-  }
-
-  // When a new sim is selected while already loaded, clear selection
-  function handleLoad(run: RunEntry) {
-    setSelectedNode(null)
-    setSelectedLink(null)
-    setSelectedFlow(null)
+  function openRun(run: RunEntry, from: Section) {
+    setPlaying({ kind: 'run', run, from })
+    setPage('player')
     sim.loadFiles({
       linksFile: run.linksFile,
       positionsFile: run.posFile,
@@ -142,128 +64,233 @@ export default function App() {
       flowsFile: run.flowsFile,
       routesFile: run.routesFile,
       nodesJsonFile: run.nodesJsonFile,
+      jammersJsonFile: run.jammersJsonFile,
       mcsFile: run.mcsFile,
       rxPowerFile: run.rxPowerFile,
     })
   }
 
-  return (
-    <div className="flex flex-col h-[100dvh] bg-gray-50 text-gray-900 font-mono overflow-hidden">
-      {sim.loaded ? (
-        <>
-          <StatsBar
-            frame={sim.currentFrame!}
-            meta={sim.meta}
-            activeView={activeView}
-            onChangeView={setActiveView}
-            compact={compact}
-            onToggleCompact={() => setCompact((c) => !c)}
-            onChangeSim={() => {
-              setSelectedNode(null)
-              setSelectedLink(null)
-              setSelectedFlow(null)
-              sim.reset()
-            }}
-          />
+  function openExperiment(root: ExperimentRoot) {
+    if (!workspace.catalog) return
+    setEpisodeError(null)
+    setExperimentTab('results')
+    setPage('experiment')
+    session.openExperiment(workspace.catalog, root)
+  }
 
-          <div className="flex flex-1 min-h-0">
-            {/* Canvas pane — shown in 'canvas' and 'split' modes */}
-            {(activeView === 'canvas' || activeView === 'split') && (
-              <div
-                className={`relative ${activeView === 'split' ? 'w-1/2 flex-shrink-0' : 'flex-1'}`}
-              >
-                <NetworkCanvas
-                  frame={sim.currentFrame!}
-                  nextFrame={sim.nextFrame}
-                  frameAlphaRef={sim.frameAlphaRef}
-                  buildings={sim.buildings}
-                  sceneBounds={sim.sceneBounds}
-                  meta={sim.meta}
-                  compact={compact}
-                  selectedNode={selectedNode}
-                  selectedLink={selectedLink}
-                  selectedFlow={selectedFlow}
-                  onSelectNode={(id) => {
-                    setSelectedNode(id)
-                    setSelectedLink(null)
-                  }}
-                  onSelectLink={(key) => {
-                    setSelectedLink(key)
-                    setSelectedNode(null)
-                  }}
-                />
+  function openTrainingRun(root: string) {
+    closePlayer()
+    setTrainingError(null)
+    setTrainingRoot(root)
+    setPage('training')
+  }
 
-                {activeView === 'canvas' && (
-                  <div className="absolute top-3 left-3 text-xs text-gray-400 pointer-events-none hidden sm:block">
-                    Drag to orbit · Scroll to zoom · Right-drag to pan
-                  </div>
-                )}
-              </div>
-            )}
+  async function playTrainingEpisode(run: TrainingRun, episode: TrainingEpisode) {
+    if (!workspace.catalog) return
+    setTrainingError(null)
+    const result = await readPlaybackFiles(workspace.catalog, episode.files, episode.dir)
+    if (!result.ok) {
+      setTrainingError(`Episode ${episode.index}: ${result.message}`)
+      return
+    }
+    setPlaying({ kind: 'training', root: run.root, episode })
+    setPage('player')
+    sim.loadFiles(result.files)
+  }
 
-            {/* Divider in split mode */}
-            {activeView === 'split' && <div className="w-px bg-gray-200 flex-shrink-0" />}
+  async function openEpisode(episode: Episode) {
+    if (!session.catalog || openingEpisode) return
+    setEpisodeError(null)
+    setOpeningEpisode(episode)
+    try {
+      const result = await episodeFiles(session.catalog, episode)
+      if (!result.ok) {
+        setEpisodeError(
+          `${episode.label} / training seed ${episode.trainingSeed ?? 'none'} / ${episode.policy} / seed ${episode.seed}: ${result.message}`
+        )
+        return
+      }
+      session.selectEpisode(episode)
+      setPlaying({ kind: 'episode', episode })
+      setPage('player')
+      sim.loadFiles(result.files)
+    } catch (err) {
+      setEpisodeError(`Could not read ${episode.dir}: ${err instanceof Error ? err.message : err}`)
+    } finally {
+      setOpeningEpisode(null)
+    }
+  }
 
-            {/* Charts pane — shown in 'charts' and 'split' modes */}
-            {(activeView === 'charts' || activeView === 'split') && (
-              <div className={`${activeView === 'split' ? 'w-1/2 flex-shrink-0' : 'flex-1'}`}>
-                <ChartsView
-                  frames={sim.frames}
-                  frameIndex={sim.frameIndex}
-                  selectedLink={selectedLink}
-                  onSelectLink={(key) => {
-                    setSelectedLink(key)
-                    setSelectedNode(null)
-                  }}
-                />
-              </div>
-            )}
+  const home: Crumb = { label: 'Home', onClick: () => navigate('home') }
+  const experimentName = session.experiment
+    ? folderLabel(session.experiment.root).name || session.experiment.name
+    : ''
 
-            {/* Info panel — hidden in split mode to save space */}
-            {activeView !== 'split' && (
-              <InfoPanel
-                frame={sim.currentFrame!}
-                selectedNode={selectedNode}
-                selectedLink={selectedLink}
-                selectedFlow={selectedFlow}
-                onSelectNode={handleSelectNode}
-                onSelectFlow={(flow) => {
-                  setSelectedFlow(flow)
-                  setSelectedNode(null)
-                  setSelectedLink(null)
-                }}
-              />
-            )}
-          </div>
+  function playerContext(): { parents: Crumb[]; title: string; back: () => void } {
+    if (playing?.kind === 'episode') {
+      const back = () => {
+        closePlayer()
+        setPage('experiment')
+      }
+      return {
+        parents: [
+          home,
+          { label: 'RL experiments', onClick: () => navigate('experiments') },
+          { label: experimentName, onClick: back },
+        ],
+        title: `${session.evaluation ? rewardLabel(session.evaluation) : playing.episode.label} · ${policyLabel(playing.episode.policy)} · evaluation seed ${playing.episode.seed}`,
+        back,
+      }
+    }
+    if (playing?.kind === 'training') {
+      const back = () => {
+        closePlayer()
+        setPage('training')
+      }
+      return {
+        parents: [
+          home,
+          { label: 'RL experiments', onClick: () => navigate('experiments') },
+          { label: trainingRunTitle(playing.root), onClick: back },
+        ],
+        title: `Training episode ${playing.episode.index}`,
+        back,
+      }
+    }
+    const from = playing?.from ?? 'runs'
+    return {
+      parents: [
+        home,
+        ...(from === 'home' ? [] : [{ label: 'Simulation runs', onClick: () => navigate('runs') }]),
+      ],
+      title: playing ? `${playing.run.time} · ${playing.run.seed}` : 'Simulation',
+      back: () => navigate(from),
+    }
+  }
 
-          <div className="hidden sm:block">
-            <Terminal
-              logs={logs}
-              collapsed={!terminalOpen}
-              onToggle={() => setTerminalOpen((o) => !o)}
-              onClear={handleClearLogs}
-            />
-          </div>
+  // The nav rail is hidden in the player, so only list pages need a highlighted section
+  const section: Section =
+    page === 'experiment' || page === 'training' || page === 'player' ? 'experiments' : page
 
-          <PlaybackControls
-            playing={sim.playing}
-            speed={sim.speed}
-            frameIndex={sim.frameIndex}
-            totalFrames={sim.frames.length}
-            currentTime={sim.currentFrame?.time ?? 0}
-            onPlay={sim.play}
-            onPause={sim.pause}
-            onSeek={handleSeek}
-            onSetSpeed={handleSetSpeed}
-          />
-        </>
+  let content
+  if (page === 'player') {
+    const ctx = playerContext()
+    const rl =
+      playing?.kind === 'episode' && session.catalog && session.evaluation && session.episode
+        ? {
+            catalog: session.catalog,
+            evaluation: session.evaluation,
+            evaluations: session.experiment?.evaluations ?? [],
+            episode: session.episode,
+            onOpenEpisode: openEpisode,
+            openingEpisode,
+            trails: session.trails,
+            overlayOptions: session.overlayOptions,
+            overlayPolicies: session.overlayPolicies,
+            trailErrors: session.trailErrors,
+            onToggleOverlay: session.toggleOverlay,
+            trailNode: session.trailNode,
+            onTrailNode: session.setTrailNode,
+          }
+        : null
+    content = (
+      <PlayerPage
+        key={playing?.kind === 'run' ? playing.run.key : playing ? playing.episode.dir : undefined}
+        sim={sim}
+        logs={playback.logs}
+        onSeek={playback.handleSeek}
+        onSetSpeed={playback.handleSetSpeed}
+        onClearLogs={playback.handleClearLogs}
+        parents={ctx.parents}
+        title={ctx.title}
+        rl={rl}
+        onClose={ctx.back}
+      />
+    )
+  } else if (page === 'experiment') {
+    content =
+      session.experiment && session.catalog ? (
+        <ExperimentPage
+          catalog={session.catalog}
+          experiment={session.experiment}
+          openError={episodeError}
+          openingEpisode={openingEpisode}
+          onOpenEpisode={openEpisode}
+          onHome={() => navigate('home')}
+          onExperiments={() => navigate('experiments')}
+          tab={experimentTab}
+          onTab={setExperimentTab}
+          trainingRoots={workspace.allTrainingRoots}
+          onOpenTrainingRun={openTrainingRun}
+        />
+      ) : session.error ? (
+        <Note tone="error">{session.error}</Note>
       ) : (
-        <div className="flex-1 flex items-center justify-center p-12">
-          <div className="w-full max-w-md bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
-            <FileLoader onLoad={handleLoad} />
-          </div>
-        </div>
+        <div className="text-sm text-muted">Reading experiment…</div>
+      )
+  } else if (page === 'runs') {
+    content = (
+      <RunsPage
+        workspace={workspace}
+        onHome={() => navigate('home')}
+        onOpenRun={(run) => openRun(run, 'runs')}
+      />
+    )
+  } else if (page === 'experiments') {
+    content = (
+      <ExperimentsPage
+        workspace={workspace}
+        onHome={() => navigate('home')}
+        onOpenExperiment={openExperiment}
+        onOpenTrainingRun={openTrainingRun}
+      />
+    )
+  } else if (page === 'training' && trainingRoot !== null && workspace.catalog) {
+    content = (
+      <TrainingRunPage
+        catalog={workspace.catalog}
+        root={trainingRoot}
+        onHome={() => navigate('home')}
+        onExperiments={() => navigate('experiments')}
+        onPlay={playTrainingEpisode}
+        openError={trainingError}
+      />
+    )
+  } else {
+    content = (
+      <HomePage
+        workspace={workspace}
+        onNavigate={navigate}
+        onOpenRun={(run) => openRun(run, 'home')}
+        onOpenExperiment={openExperiment}
+      />
+    )
+  }
+
+  return (
+    <div className="flex h-[100dvh] gap-3 p-3 text-ink font-sans overflow-hidden">
+      {page !== 'player' && (
+        <NavRail active={section} onNavigate={navigate} workspace={workspace} />
       )}
+      <main
+        className={`flex-1 min-w-0 flex flex-col ${page === 'player' ? 'min-h-0' : 'overflow-y-auto'}`}
+      >
+        {page === 'player' ? (
+          content
+        ) : (
+          <div className="w-full max-w-6xl mx-auto px-3 py-4 flex flex-col flex-1">{content}</div>
+        )}
+      </main>
+
+      {/* Fallback folder picker for browsers without the File System Access API */}
+      <input
+        ref={workspace.dirInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is non-standard but widely supported
+        webkitdirectory=""
+        className="hidden"
+        onChange={workspace.onDirSelect}
+      />
     </div>
   )
 }

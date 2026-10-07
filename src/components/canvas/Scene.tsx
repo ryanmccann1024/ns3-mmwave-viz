@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
-import type { SimFrame, BuildingState } from '../../types'
+import type { SimFrame, BuildingState, JammerState } from '../../types'
 import type { SceneBounds } from '../../hooks/useSimData'
 import { linkKey } from './utils/linkColors'
 import { NodeObject } from './NodeObject'
@@ -9,6 +9,9 @@ import { BuildingObject } from './BuildingObject'
 import { SceneEnvironment } from './SceneEnvironment'
 import { RainEffect } from './RainEffect'
 import { TrafficLayer } from './TrafficLayer'
+import { TrajectoryLayer } from './TrajectoryLayer'
+import { JammerObject } from './JammerObject'
+import type { Trail } from './TrajectoryLayer'
 
 interface Props {
   frame: SimFrame
@@ -22,10 +25,13 @@ interface Props {
   onSelectLink: (key: string | null) => void
   dimensions: 1 | 2 | 3
   buildings: BuildingState[]
+  jammers: JammerState[]
+  carrierHz: number
   sceneBounds: SceneBounds
   compact?: boolean
   rainRate: number
   scenario: string
+  trails?: Trail[]
 }
 
 export function Scene({
@@ -39,10 +45,13 @@ export function Scene({
   onSelectLink,
   dimensions,
   buildings,
+  jammers,
+  carrierHz,
   sceneBounds,
   compact = false,
   rainRate,
   scenario,
+  trails,
 }: Props) {
   const { nodes, links } = frame
 
@@ -96,12 +105,14 @@ export function Scene({
   const camNear = Math.max(0.1, scale * 0.5)
   const camFar = Math.max(5000, gs * 4)
 
+  // Frame what the nodes use, not the whole ground plane
+  const view = Math.min(gs, sceneBounds.viewSpan * compactFactor)
   const camPos: [number, number, number] =
     dimensions === 2
-      ? [sceneCX, Math.max(500, gs * 1.1), sceneCY]
+      ? [sceneCX, view * 1.1, sceneCY]
       : dimensions === 1
-        ? [sceneCX, 80 * scale, gs * 1.1]
-        : [sceneCX - gs * 0.35, gs * 0.35, sceneCY + gs * 0.65]
+        ? [sceneCX, 80 * (view / 500), view * 1.1]
+        : [sceneCX - view * 0.35, view * 0.45, sceneCY + view * 0.75]
 
   return (
     <>
@@ -161,6 +172,18 @@ export function Scene({
         <BuildingObject key={b.id} building={b} dim={dimensions} posScale={compactFactor} />
       ))}
 
+      {/* Jammer emitters are not mesh nodes or action slots. */}
+      {jammers.map((jammer) => (
+        <JammerObject
+          key={jammer.id}
+          jammer={jammer}
+          timeS={frame.time}
+          carrierHz={carrierHz}
+          dim={dimensions}
+          posScale={compactFactor}
+        />
+      ))}
+
       {/* Links (rendered before nodes so nodes draw on top) */}
       {links.map((l) => {
         const nA = nodeById.get(l.nodeA),
@@ -198,6 +221,15 @@ export function Scene({
           selectedFlow={selectedFlow}
           dim={dimensions}
           posScale={compactFactor}
+        />
+      )}
+
+      {trails && trails.length > 0 && (
+        <TrajectoryLayer
+          trails={trails}
+          dim={dimensions}
+          posScale={compactFactor}
+          time={frame.time}
         />
       )}
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-type Variant = 'primary' | 'ghost' | 'icon-round' | 'link'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'icon-round' | 'link'
 
 interface Props {
   variant?: Variant
@@ -14,17 +14,20 @@ interface Props {
 
 const BASE: Record<Variant, string> = {
   primary:
-    'px-6 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium transition-colors',
+    'px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-ink text-white text-sm font-semibold shadow-control transition-colors',
+  secondary:
+    'px-3.5 py-2 rounded-xl text-sm font-medium transition-colors bg-white text-ink border border-hairline shadow-control hover:bg-white/60',
   ghost:
-    'px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors bg-gray-100 text-gray-500 hover:text-gray-900 border border-gray-200',
+    'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-white/70 text-ink-2 hover:bg-white hover:text-ink border border-hairline shadow-control',
   'icon-round':
-    'w-9 h-9 flex items-center justify-center rounded-full bg-sky-500 hover:bg-sky-600 transition-colors text-white flex-shrink-0',
-  link: 'text-xs text-gray-400 hover:text-gray-600 transition-colors',
+    'w-10 h-10 flex items-center justify-center rounded-full bg-accent hover:bg-accent-ink transition-colors text-white flex-shrink-0 shadow-control',
+  link: 'text-xs text-muted hover:text-ink transition-colors',
 }
 
 const ACTIVE: Record<Variant, string> = {
   primary: '',
-  ghost: 'bg-sky-500 text-white border-sky-500',
+  secondary: '',
+  ghost: '!bg-ink !text-white !border-ink',
   'icon-round': '',
   link: '',
 }

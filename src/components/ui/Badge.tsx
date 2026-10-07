@@ -5,7 +5,9 @@ interface Props {
 
 export function Badge({ label, colorClass }: Props) {
   return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${colorClass}`}>
+    <span
+      className={`inline-block px-2 rounded-full text-[10px] leading-[18px] font-semibold tracking-wide ${colorClass}`}
+    >
       {label}
     </span>
   )

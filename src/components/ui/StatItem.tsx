@@ -4,11 +4,16 @@ interface Props {
   accentClass?: string
 }
 
+/** KPI tile: one big number over a short label */
 export function StatItem({ label, value, accentClass }: Props) {
   return (
-    <div className="flex flex-col items-center gap-0.5 px-4 border-r border-gray-200 last:border-0">
-      <div className={`text-lg font-bold font-mono ${accentClass ?? 'text-gray-800'}`}>{value}</div>
-      <div className="text-xs text-gray-400 whitespace-nowrap">{label}</div>
+    <div className="tile px-3 py-1.5 min-w-[5.5rem]">
+      <div
+        className={`text-lg leading-6 font-semibold tabular-nums tracking-tight ${accentClass ?? 'text-ink'}`}
+      >
+        {value}
+      </div>
+      <div className="text-[11px] text-muted whitespace-nowrap">{label}</div>
     </div>
   )
 }

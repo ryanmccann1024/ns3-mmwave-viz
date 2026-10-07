@@ -54,7 +54,7 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
 
   if (series.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+      <div className="flex items-center justify-center h-full text-muted text-sm">
         No {config.label} data available
       </div>
     )
@@ -70,24 +70,24 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(10,19,36,0.08)" />
             <XAxis
               dataKey="time"
               type="number"
               domain={['dataMin', 'dataMax']}
               tickFormatter={(v: number) => `${v.toFixed(1)}s`}
-              stroke="#9ca3af"
+              stroke="#94a3b8"
               fontSize={11}
               label={{
                 value: 'Time (s)',
                 position: 'insideBottom',
                 offset: -5,
                 fontSize: 11,
-                fill: '#6b7280',
+                fill: '#6a7b96',
               }}
             />
             <YAxis
-              stroke="#9ca3af"
+              stroke="#94a3b8"
               fontSize={11}
               label={{
                 value: yLabel,
@@ -95,14 +95,16 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
                 position: 'insideLeft',
                 offset: 10,
                 fontSize: 11,
-                fill: '#6b7280',
+                fill: '#6a7b96',
               }}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#fff',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
+                backgroundColor: 'rgba(255,255,255,0.85)',
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 14px 34px -16px rgba(10,19,36,0.3)',
+                border: '1px solid rgba(255,255,255,0.8)',
+                borderRadius: '12px',
                 fontSize: '11px',
                 fontFamily: 'monospace',
               }}
@@ -113,7 +115,12 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
               labelFormatter={(label) => `t = ${Number(label).toFixed(3)}s`}
             />
 
-            <ReferenceLine x={currentTime} stroke="#0f172a" strokeWidth={2} strokeDasharray="4 2" />
+            <ReferenceLine
+              x={currentTime}
+              stroke="#1e63e9"
+              strokeWidth={1.5}
+              strokeDasharray="4 2"
+            />
 
             {keys.map((key, i) => {
               const isSelected = selectedKey === key
@@ -137,7 +144,7 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
       </div>
 
       {/* Custom scrollable legend */}
-      <div className="max-h-16 overflow-y-auto px-2 py-1.5 border-t border-gray-100">
+      <div className="max-h-16 overflow-y-auto px-2 py-1.5 border-t border-ink/[0.06]">
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {keys.map((key, i) => {
             const isSelected = selectedKey === key
@@ -157,7 +164,7 @@ export function MetricChart({ series, config, currentTime, selectedKey, onSelect
                     height: isSelected ? '3px' : '2px',
                   }}
                 />
-                <span className={isSelected ? 'text-gray-900' : 'text-gray-500'}>
+                <span className={isSelected ? 'text-ink' : 'text-muted'}>
                   {keyPrefix}
                   {key}
                 </span>
