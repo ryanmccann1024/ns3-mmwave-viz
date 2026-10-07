@@ -84,6 +84,69 @@ outputs/
 2. The visualizer discovers all valid simulation runs grouped by date.
 3. Click any run to load it — the 3D canvas appears immediately.
 
+## Reading RL experiment results
+
+The visualizer can also read saved local or fetched RL experiments. It is a reader only: it does not train,
+evaluate, compare, submit or fetch jobs. Results are produced with the
+simulator's own CLI; see the simulator repository's `scratch/mesh-sim/README.md` (section
+"Comparing policies and running an experiment matrix") and
+`scratch/mesh-sim/scripts/rl/ops/README.md` (cluster runs and fetching results).
+
+**Where to start.** Open **RL experiments**, then one experiment card. Each card
+names its matrix row(s) and number of linked training runs even when old
+timestamped folder names are vague. In the experiment use **Observation · action · reward**
+for the exact input vector, masks, and weighted reward; **Learning** for training
+episode return and the model-selection checkpoint curve; **Results** for
+delivery-first PPO/hold/random comparisons and paired seed differences; and
+**Episodes (3D)** to compare individual policies on the same seed. Results and
+Comparison default to visual summaries, with full metrics tables retained behind
+their toggles. A seed ID on a chart is not training time. The reward-through-one-
+evaluation-episode chart shows a fixed policy's within-episode behavior, not learning.
+
+Training seed 101 (or 101–103 in a multi-run plan) updates the model. The
+model-selection seed (201 in the local suite) chooses its saved checkpoint;
+it is not a held-out test. Held-out evaluation seeds (301–305, or fresh 401–405
+in confirmation) compare that frozen model to hold and random-valid. Five
+evaluation seeds are not five independently trained models.
+
+**What it reads.** From an experiment or fetched-results folder: `experiment_plan.json`,
+`eval/<row>/train-seed-<T>/eval_manifest.json`, `comparison/comparison.json` and, when present,
+`fetch_manifest.json`. On demand only: `train_manifest.json`, `comparison/episodes.csv`, and for the
+one episode you open its `rl_episode.json`, `seed-<S>/summary.json`, CSVs, `inputs/` and
+`steps.jsonl`. Model archives are never read; the Learning view can read a training run's
+`evaluations.npz` for its saved checkpoint curve. Rows, training seeds, policies and
+seeds are matched by the identity recorded in the manifests, relative to the folder you opened;
+absolute paths inside manifests are ignored.
+
+**Opening a folder.** With `npm run dev`, the sibling simulator outputs directory
+(`../ns3-mmwave/scratch/mesh-sim/outputs`) is discovered automatically and any experiments in it
+are listed above the legacy runs. In a production build (`npm run build && npm run preview`, or any
+static host) click **Open Outputs Folder** and pick either the outputs folder, a single experiment
+folder or a fetched-results folder; no server is needed. Only reader-relevant files are indexed.
+If the file limit is reached, the loader warns that some experiments may be missing; open a
+single experiment or fetched-results folder instead. The built-in test command needs Node 22.6+.
+
+**Intervals.** Comparison intervals and means come from `comparison.json`, not GUI statistical inference.
+Visual cards round them for readability; the tables retain the original precision. A *paired*
+interval describes variation across held-out evaluation seeds for one fixed trained model. A
+*group* interval describes variation across training runs of the same row. When the simulator
+recorded no interval the table says "not available" with the recorded reason; that is not a
+zero-width interval. Returns are marked as not comparable between rows whose reward definitions
+differ. Episode `summary.json` statistics are a separate source and may cover a different time
+window.
+
+**When something is unavailable.** A comparison marked `incomplete` lists the evaluations it is
+missing and why. An evaluation can be `incomplete`, `failed`, `missing` (declared in the plan but
+absent from the folder) or `not fetched` (left out of a fetched snapshot). An episode without
+`links.csv` and `positions.csv` cannot be played, and without `positions.csv` has no trail. Decision
+telemetry appears only if the evaluation saved `steps.jsonl`; playback works without it. Fetch
+information is a saved snapshot from `fetch_manifest.json`, not live queue status.
+
+**Decision timing.** A saved telemetry record describes the action applied and reward earned
+during the interval ending at that record's time. Its mask is the mask observed at that ending
+decision. The panel selects the saved interval containing the playback time; if telemetry was
+sampled and no saved interval covers that time, it says so rather than displaying an older action.
+
 ## Controls
 
 | Control | Action |
@@ -146,6 +209,7 @@ npm run lint        # ESLint (zero warnings enforced)
 npm run lint:fix    # Auto-fix ESLint issues
 npm run format      # Prettier format all src/ files
 npm run build       # TypeScript compile + Vite production build
+npm test            # Unit tests for the result-reading libraries (Node 22.6+)
 ```
 
 A Husky pre-commit hook runs `lint-staged` on staged `.ts`/`.tsx` files before every commit.
