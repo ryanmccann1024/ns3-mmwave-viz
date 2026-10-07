@@ -62,3 +62,27 @@ export const LINK_BADGE_CLASSES = {
 } as const
 
 export const PLAYBACK_SPEEDS = [0.5, 1, 2, 5, 10] as const
+
+export const TRAIL_COLORS: Record<string, string> = {
+  model: '#2563eb',
+  hold: '#ea580c',
+  random_valid: '#c026d3',
+}
+export const TRAIL_COLOR_DEFAULT = '#475569'
+export const trailColor = (policy: string) => TRAIL_COLORS[policy] ?? TRAIL_COLOR_DEFAULT
+
+// Actions an RL policy can send (validated categorical order; hold is neutral: no move)
+export const ACTION_COLORS: Record<string, string> = {
+  west: '#0d9488',
+  east: '#d97706',
+  south: '#7c3aed',
+  north: '#0284c7',
+  hold: '#94a3b8',
+}
+const ACTION_FALLBACK = ['#0d9488', '#d97706', '#7c3aed', '#0284c7']
+export const actionColor = (action: string, i: number) =>
+  ACTION_COLORS[action] ?? ACTION_FALLBACK[i % ACTION_FALLBACK.length]
+
+// Reward components, in the order the reward schema lists them
+const COMPONENT_COLORS = ['#0d9488', '#7c3aed', '#d97706', '#0284c7']
+export const componentColor = (i: number) => COMPONENT_COLORS[i % COMPONENT_COLORS.length]

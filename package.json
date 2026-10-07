@@ -10,7 +10,8 @@
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [

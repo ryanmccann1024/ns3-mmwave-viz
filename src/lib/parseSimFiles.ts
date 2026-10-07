@@ -160,15 +160,20 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
   const flowRows = flowsText ? parseCSV(flowsText) : []
   const routeRows = routesText ? parseCSV(routesText) : []
 
-  // Parse nodes.json for role overrides
+  // Prefer declared mesh node types over inferring a role from movement. A
+  // stationary drone is still a drone, not a base station.
   let nodeRoles: Map<number, string> | undefined
+  const declaredTypes = new Map<number, NodeType>()
   if (nodesJsonText) {
     try {
       const nodesArr = JSON.parse(nodesJsonText)
       if (Array.isArray(nodesArr)) {
         nodeRoles = new Map()
-        nodesArr.forEach((n: { role?: string }, i: number) => {
+        nodesArr.forEach((n: { role?: string; node_type?: string }, i: number) => {
           if (n.role) nodeRoles!.set(i, n.role)
+          if (n.node_type === 'drone') declaredTypes.set(i, 'air')
+          if (n.node_type === 'pedestrian') declaredTypes.set(i, 'ground')
+          if (n.node_type === 'vehicle') declaredTypes.set(i, 'vehicle')
         })
       }
     } catch {
@@ -183,10 +188,14 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
     if (!posByTime.has(t)) posByTime.set(t, [])
     const nodeId = parseInt((r as Record<string, string>).node_id)
     let nodeType = ((r as Record<string, string>).node_type?.trim() as NodeType) ?? 'ground'
-    // Override with role from nodes.json if available
+    // Explicit role takes priority over declared type; otherwise use the
+    // physical type saved with the episode instead of motion inference.
     if (nodeRoles?.has(nodeId)) {
       const role = nodeRoles.get(nodeId)!
       if (role === 'gateway') nodeType = 'gateway'
+    }
+    if (nodeType !== 'gateway' && declaredTypes.has(nodeId)) {
+      nodeType = declaredTypes.get(nodeId)!
     }
     posByTime.get(t)!.push({
       id: nodeId,
@@ -314,7 +323,7 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
     rxPower: rxPowerByTime.get(t) ?? [],
   }))
 
-  inferNodeTypes(frames)
+  inferNodeTypes(frames, declaredTypes)
   return frames
 }
 
@@ -327,13 +336,14 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
 //   - speed > 3 m/s on ground → vehicle
 //   - speed 0.5–3 m/s        → ground  (pedestrian)
 //   - speed < 0.5 m/s        → bs     (stationary / base-station-like)
-// Explicitly typed nodes (gateway, bs, air, vehicle) are never overridden.
+// Explicitly typed nodes and types declared in inputs/nodes.json are never
+// overridden. This fallback is only for older runs without a declared type.
 
 const ALTITUDE_THRESHOLD = 3 // metres — above this = airborne
 const VEHICLE_SPEED = 3 // m/s
 const PEDESTRIAN_SPEED = 0.5 // m/s
 
-function inferNodeTypes(frames: SimFrame[]) {
+function inferNodeTypes(frames: SimFrame[], declaredTypes: Map<number, NodeType>) {
   if (frames.length < 2) return
 
   // Collect all node IDs from the first frame
@@ -368,6 +378,7 @@ function inferNodeTypes(frames: SimFrame[]) {
   // Classify each node
   const nodeTypeMap = new Map<number, NodeType>()
   for (const id of nodeIds) {
+    if (declaredTypes.has(id)) continue
     const firstNode = frames[0].nodes.find((n) => n.id === id)
     if (!firstNode) continue
     // Only reclassify generic types
