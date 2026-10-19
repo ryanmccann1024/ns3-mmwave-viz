@@ -14,6 +14,8 @@ import { JammerObject } from './JammerObject'
 import type { Trail } from './TrajectoryLayer'
 import type { BaselinePlan } from '../../lib/baselineManifest'
 import { PlacementLayer } from './PlacementLayer'
+import { RewardLandscapeLayer } from './RewardLandscapeLayer'
+import type { LandscapeView } from '../../lib/rewardLandscape'
 
 interface Props {
   frame: SimFrame
@@ -36,6 +38,7 @@ interface Props {
   trails?: Trail[]
   replayPolicy?: string
   placementPlan?: BaselinePlan | null
+  rewardLandscape?: LandscapeView | null
 }
 
 export function Scene({
@@ -58,6 +61,7 @@ export function Scene({
   trails,
   replayPolicy,
   placementPlan,
+  rewardLandscape,
 }: Props) {
   const { nodes, links } = frame
 
@@ -176,6 +180,15 @@ export function Scene({
         planeSize={sceneBounds.planeSize * compactFactor}
         scenario={scenario}
       />
+
+      {/* On the ground, under everything else */}
+      {rewardLandscape && (
+        <RewardLandscapeLayer
+          view={rewardLandscape}
+          dimensions={dimensions}
+          posScale={compactFactor}
+        />
+      )}
 
       {/* Buildings */}
       {buildings.map((b) => (

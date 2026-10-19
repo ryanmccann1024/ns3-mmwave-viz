@@ -5,6 +5,7 @@ import { Scene } from './Scene'
 import type { Trail } from './TrajectoryLayer'
 import type { BaselinePlan } from '../../lib/baselineManifest'
 import { getScenarioTheme } from '../../styles/scenarioThemes'
+import type { LandscapeView } from '../../lib/rewardLandscape'
 
 interface Props {
   frame: SimFrame
@@ -25,6 +26,8 @@ interface Props {
   trails?: Trail[]
   replayPolicy?: string
   placementPlan?: BaselinePlan | null
+  /** reward landscape drawn on the ground for the chosen node and decision */
+  rewardLandscape?: LandscapeView | null
 }
 
 export function NetworkCanvas({
@@ -45,6 +48,7 @@ export function NetworkCanvas({
   trails,
   replayPolicy,
   placementPlan,
+  rewardLandscape,
 }: Props) {
   const scenario = meta?.scenario ?? ''
   const theme = getScenarioTheme(scenario)
@@ -78,6 +82,7 @@ export function NetworkCanvas({
         trails={trails}
         replayPolicy={replayPolicy}
         placementPlan={placementPlan}
+        rewardLandscape={rewardLandscape}
       />
     </Canvas>
   )

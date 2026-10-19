@@ -58,6 +58,8 @@ export interface EpisodeFilePaths {
   summary: string | null
   steps: string | null
   rlEpisode: string | null
+  /** offline reward landscape (reward_landscape.json) next to steps.jsonl */
+  rewardLandscape: string | null
   nodesJson: string | null
   jammersJson: string | null
   buildings: string | null
@@ -345,6 +347,7 @@ function buildEpisode(
     summary: at(join(seedDir, 'summary.json')),
     steps: at(join(dir, 'steps.jsonl')),
     rlEpisode: at(join(dir, 'rl_episode.json')),
+    rewardLandscape: at(join(dir, 'reward_landscape.json')),
     nodesJson: at(join(dir, 'inputs/nodes.json')),
     jammersJson: at(join(dir, 'inputs/jammers.json')),
     buildings: buildings.find((p) => p.endsWith('/buildings.json')) ?? buildings[0] ?? null,

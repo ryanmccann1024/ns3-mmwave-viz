@@ -102,6 +102,7 @@ function episodeFilePaths(catalog: ResultCatalog, dir: string): EpisodeFilePaths
     summary: inSeed('summary.json'),
     steps: under.find((p) => p === `${dir}/steps.jsonl`) ?? null,
     rlEpisode: `${dir}/rl_episode.json`,
+    rewardLandscape: under.find((p) => p === `${dir}/reward_landscape.json`) ?? null,
     nodesJson: under.find((p) => p.endsWith('/inputs/nodes.json')) ?? null,
     jammersJson: under.find((p) => p.endsWith('/inputs/jammers.json')) ?? null,
     buildings: buildings.find((p) => p.endsWith('/buildings.json')) ?? buildings[0] ?? null,

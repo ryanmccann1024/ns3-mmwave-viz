@@ -92,3 +92,15 @@ export function experimentLabel(name: string): string {
       .replace(/\b(\d+)ep\b/gi, '$1 episodes')
   )
 }
+
+/**
+ * A snake_case key (reward component, action meaning, config field) as words:
+ * sinr_quality -> SINR quality, delivery_ratio -> Delivery ratio.
+ */
+export function componentLabel(key: string): string {
+  const t = key
+    .replace(/_+/g, ' ')
+    .trim()
+    .replace(/\b(sinr|snr|los|nlos|mcs)\b/gi, (w) => w.toUpperCase())
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}

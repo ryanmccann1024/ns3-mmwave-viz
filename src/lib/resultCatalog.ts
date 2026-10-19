@@ -30,6 +30,7 @@ const READER_FILE_NAMES = new Set([
   'fetch_manifest.json',
   'rl_episode.json',
   'steps.jsonl',
+  'reward_landscape.json',
   'evaluations.npz',
   'baseline_manifest.json',
   'baseline-plan.json',
