@@ -8,10 +8,13 @@ import { controlledNodeIndices } from '../lib/trajectory'
 import { trailColor } from '../styles/tokens'
 import { MOTION } from '../styles/motion'
 import { shortNumber } from '../lib/format'
-import { policyLabel } from '../lib/rlLabels'
+import { modelSelectionLabel, policyLabel, rewardComponentLabel } from '../lib/rlLabels'
 import type { OverlayOption } from '../hooks/useExperimentSession'
 import { Row } from './ui/Row'
 import { Disclosure } from './ui/Disclosure'
+import { Loading } from './ui/Spinner'
+import { missionObjective, objectiveValue } from '../lib/missionObjective'
+import type { InputSource, ScenarioInputSources } from '../lib/scenarioInputs'
 
 type Rec = Record<string, unknown>
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -76,7 +79,7 @@ function Identity({ episode, evaluation }: { episode: Episode; evaluation: Evalu
       <Row label="Evaluation seed" value={episode.seed} />
       <Row label="Status" value={episode.status ?? 'not recorded'} />
       <Row label="Exit code" value={formatNumber(episode.exitCode)} />
-      <Row label="Model selection" value={evaluation.modelSelection ?? 'not recorded'} />
+      <Row label="Model selection" value={modelSelectionLabel(evaluation.modelSelection)} />
       <Row label="Decisions" value={formatNumber(episode.decisions)} />
       {episode.error && <Warn>error: {episode.error}</Warn>}
       <div className="text-sm text-ink-2 break-all mt-1">{episode.dir}</div>
@@ -107,12 +110,43 @@ function ContractView({ evaluation }: { evaluation: Evaluation }) {
   )
 }
 
+const CHECK_LABEL: Record<InputSource['check'], string> = {
+  archived: 'saved with the episode',
+  verified: 'via run.ini, hash matches the manifest',
+  unverified: 'via run.ini, no hash to check',
+}
+
+/** Where the replay scenario inputs were read from. */
+function InputFiles({ sources }: { sources: ScenarioInputSources | null }) {
+  if (!sources) return <div className="text-sm text-ink-2">Not reported for this replay.</div>
+  const row = (label: string, source: InputSource | null) => (
+    <div className="flex flex-col gap-0.5 py-2 border-b border-hairline last:border-0">
+      <span className="text-base font-medium text-ink">{label}</span>
+      <span className="text-base text-ink-2 break-all">
+        {source ? `${source.path} · ${CHECK_LABEL[source.check]}` : 'Not loaded'}
+      </span>
+    </div>
+  )
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        {row('nodes.json', sources.nodes)}
+        {row('buildings.json', sources.buildings)}
+        {sources.jammers && row('jammers.json', sources.jammers)}
+      </div>
+      {sources.rejected.map((message) => (
+        <Warn key={message}>{message}</Warn>
+      ))}
+    </div>
+  )
+}
+
 function Outcome({ episode }: { episode: Episode }) {
   return (
     <div>
       <Row label="Return" value={formatNumber(episode.return)} />
       {Object.entries(episode.rewardComponentsSum ?? {}).map(([k, v]) => (
-        <Row key={k} label={`Σ ${k}`} value={formatNumber(v)} />
+        <Row key={k} label={`Σ ${rewardComponentLabel(k)}`} value={formatNumber(v)} />
       ))}
       {Object.entries(episode.metrics ?? {}).map(([k, v]) => (
         <Row key={k} label={k} value={formatNumber(v)} />
@@ -125,14 +159,14 @@ function Outcome({ episode }: { episode: Episode }) {
 
 function RunRecord({ data }: { data: Loaded<unknown> | null }) {
   if (!data) return <div className="text-sm text-ink-2">rl_episode.json was not saved.</div>
-  if (data.state === 'loading') return <div className="text-sm text-ink-2">Reading…</div>
+  if (data.state === 'loading') return <Loading label="Reading" size="sm" />
   if (data.state === 'error') return <Warn>{data.message}</Warn>
   const d = isRec(data.value) ? data.value : {}
   const keys = ['status', 'exit_code', 'stop_reason', 'control_mode', 'started_at', 'ended_at']
   const contract = isRec(d.contract) ? d.contract : {}
   const contractKeys = ['contract', 'tick_s', 'decision_interval_s', 'num_decisions', 'warmup_s']
   return (
-    <>
+    <div className={MOTION.enterFade}>
       {keys
         .filter((k) => k in d)
         .map((k) => (
@@ -143,18 +177,18 @@ function RunRecord({ data }: { data: Loaded<unknown> | null }) {
         .map((k) => (
           <Row key={k} label={`contract.${k}`} value={show(contract[k])} />
         ))}
-    </>
+    </div>
   )
 }
 
 function SummaryView({ data }: { data: Loaded<unknown> | null }) {
   if (!data) return <div className="text-sm text-ink-2">summary.json was not saved.</div>
-  if (data.state === 'loading') return <div className="text-sm text-ink-2">Reading…</div>
+  if (data.state === 'loading') return <Loading label="Reading" size="sm" />
   if (data.state === 'error') return <Warn>{data.message}</Warn>
   const d = isRec(data.value) ? data.value : {}
   const network = isRec(d.network) ? d.network : {}
   return (
-    <>
+    <div className={MOTION.enterFade}>
       {['scenario', 'duration_s', 'warmup_s']
         .filter((k) => k in d)
         .map((k) => (
@@ -163,7 +197,7 @@ function SummaryView({ data }: { data: Loaded<unknown> | null }) {
       {Object.entries(network).map(([k, v]) => (
         <Row key={k} label={k} value={show(v)} />
       ))}
-    </>
+    </div>
   )
 }
 
@@ -310,6 +344,8 @@ interface Props {
   onToggleOverlay: (policy: string) => void
   trailNode: string | null
   onTrailNode: (node: string | null) => void
+  /** where the loaded replay's nodes.json and buildings.json came from */
+  inputSources?: ScenarioInputSources | null
 }
 
 export function EpisodeDetails({
@@ -322,22 +358,32 @@ export function EpisodeDetails({
   onToggleOverlay,
   trailNode,
   onTrailNode,
+  inputSources = null,
 }: Props) {
   const runRecord = useSmallJson(catalog, episode.files.rlEpisode)
   const summary = useSmallJson(catalog, episode.files.summary)
 
   const completed = episode.status === 'completed'
+  const objective = missionObjective(evaluation)
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3">
         <Stat
-          label="Delivery ratio"
+          label={objective?.label ?? 'Delivery ratio'}
           value={
-            episode.metrics?.delivery_ratio == null
-              ? 'n/a'
-              : `${(episode.metrics.delivery_ratio * 100).toFixed(1)}%`
+            objective
+              ? objectiveValue(episode.metrics?.[objective.metric], objective)
+              : episode.metrics?.delivery_ratio == null
+                ? 'n/a'
+                : `${(episode.metrics.delivery_ratio * 100).toFixed(1)}%`
           }
         />
+        {objective && objective.secondary !== objective.metric && (
+          <Stat
+            label={objective.secondaryLabel}
+            value={objectiveValue(episode.metrics?.[objective.secondary], { unit: '%' })}
+          />
+        )}
         <Stat
           label="Travel"
           value={
@@ -374,8 +420,11 @@ export function EpisodeDetails({
         <Disclosure title="Outcome">
           <Outcome episode={episode} />
         </Disclosure>
-        <Disclosure title="Controlled nodes">
+        <Disclosure title="Policy slots">
           <ContractView evaluation={evaluation} />
+        </Disclosure>
+        <Disclosure title="Scenario files">
+          <InputFiles sources={inputSources} />
         </Disclosure>
         <Disclosure title="Episode record">
           <Identity episode={episode} evaluation={evaluation} />

@@ -2,7 +2,13 @@
 // `decision` value from steps.jsonl, never by array row. Inputs for action n come
 // only from record n-1; a sampled-out n-1 is reported, never substituted.
 
-import type { ParseStepsResult, StepRecord, StepReward, SlotMask } from './episodeTelemetry.ts'
+import type {
+  ParseStepsResult,
+  StepRecord,
+  StepReward,
+  SlotMask,
+  TelemetryContract,
+} from './episodeTelemetry.ts'
 import { maskBySlot, recordForDecision } from './episodeTelemetry.ts'
 
 export type EpisodeTelemetry = Extract<ParseStepsResult, { ok: true }>
@@ -309,6 +315,31 @@ export function joinDecision(
     reward: record.reward ?? null,
   }
   return { decision: n, kind: 'action', input, action, outcome, record, sourceRecord }
+}
+
+/**
+ * Whether each policy slot's node could act, from `facts.node_available` (contract
+ * node_ids order) in a step record. A configured slot whose node is unavailable is still
+ * sent an action (masked to hold), but the node is offline and does not move or transmit.
+ * null for a slot when the record carries no availability for it (older telemetry).
+ */
+export function slotAvailability(
+  contract: Pick<TelemetryContract, 'node_ids' | 'slot_node_ids'>,
+  record: StepRecord | null
+): (boolean | null)[] {
+  const slots = Array.isArray(contract.slot_node_ids) ? contract.slot_node_ids : []
+  const facts = record?.facts
+  const available =
+    typeof facts === 'object' && facts !== null
+      ? (facts as { node_available?: unknown }).node_available
+      : undefined
+  const nodeIds = Array.isArray(contract.node_ids) ? contract.node_ids : []
+  return slots.map((id) => {
+    if (id === null || !Array.isArray(available) || available.length !== nodeIds.length) return null
+    const i = nodeIds.indexOf(id)
+    const value = i < 0 ? undefined : available[i]
+    return typeof value === 'boolean' ? value : null
+  })
 }
 
 /** The present decision closest to the guess (the earlier one on a tie). */

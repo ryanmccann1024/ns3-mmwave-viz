@@ -1,4 +1,9 @@
 import { useState, type ReactNode } from 'react'
+import {
+  gradedRewardExplanation,
+  rewardComponentLabel,
+  rewardWeightLabel,
+} from '../../lib/rlLabels'
 import type { Evaluation } from '../../lib/experimentIndex'
 import { describeFeature } from '../../lib/observationHelp'
 import { Segmented } from '../ui/Segmented'
@@ -21,28 +26,58 @@ function featureGroup(name: string): string {
 }
 
 const REWARD_HELP: Record<string, string> = {
-  service_success: '+1 when at least 95% of demand is delivered and routable; otherwise −1.',
-  sinr_quality:
-    'Mean current link SINR, clipped from −20…40 dB and scaled to 0…1; invalid links score 0. This is a link snapshot, not delivered traffic.',
-  unmet_sinr_quality: 'SINR quality bonus only while delivered service is below its target.',
-  delivery_ratio:
-    'Delivered traffic divided by requested traffic in the completed decision window.',
-  connectivity: 'Fraction of link-ticks connected in the completed decision window.',
-  travel_fraction:
-    'Distance actually moved this decision, divided by the maximum possible distance.',
-  origin_fraction:
-    'Distance from the episode’s starting position, divided by the configured area diagonal.',
-}
-
-function weightLabel(value: number): string {
-  return `${value < 0 ? '−' : '+'}${Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 4 })}`
+  level0_coverage_v1: '+1 at each decision meeting the coverage target; otherwise −0.001.',
+  level0_investigation_v1:
+    '+1 at each decision when every available peer is inside the target radius; otherwise −0.001. No dwell or connectivity requirement.',
+  level0_recovery_v1:
+    '+1 when at least 90% of survivor traffic demand is delivered; otherwise −0.001. Zero while waiting and in the event-boundary window; zero demand never earns success.',
+  level0_jamming_v1:
+    '+1 when at least 90% of traffic demand is delivered during jamming; otherwise −0.001. Zero while waiting and in the event-boundary window; zero demand never earns success.',
+  active_sinr_quality_v1: 'Mean SINR over links between peers still up.',
+  survivor_delivery_ratio: 'Traffic delivered between peers still up.',
+  survivor_fair_service: 'Balanced service across surviving peers.',
+  survivor_worst_service: 'Service of the worst-served surviving peer.',
+  fair_node_service: 'Balanced service across peers with demand.',
+  coverage_fraction: 'Share of outdoor area the mesh covers.',
+  adaptive_movement_cost: 'Moving costs more while the network is healthy.',
+  recovery_movement_cost: 'Moving costs more while service and coverage are healthy.',
+  recovery_delivery_deficit: 'Shortfall below the post-failure delivery target.',
+  recovery_coverage_deficit: 'Shortfall below the post-failure coverage target.',
+  recovery_worst_service: 'Worst surviving-peer service after the failure.',
+  recovery_complete: 'Once, when recovery targets hold long enough.',
+  investigation_complete: 'Once, when the team reaches the target and holds.',
+  goal_progress: 'Progress of the team towards the target.',
+  goal_coverage: 'Radio coverage around the target.',
+  connected_arrival: 'While the team is at the target and connected.',
+  team_arrival_fraction: 'Share of peers inside the target radius.',
+  team_disconnected: 'While the team is split apart.',
+  investigator_disconnected: 'While the investigator is cut off.',
+  weak_service_deficit: 'Shortfall of the weakest peer below the service floor.',
+  unsafe_proximity_fraction: 'Share of ticks with peers too close.',
+  collision_attempt_fraction: 'Share of moves blocked by a wall or another peer.',
+  decision_travel_v1: 'Distance moved, out of the most possible.',
+  team_goal_proximity_v1: 'How close the team is to the target.',
+  survivor_service_maintained_v1: 'Each decision after the failure that service holds.',
+  service_success: '+1 when 95% of demand is delivered, otherwise −1.',
+  sinr_quality: 'Mean link SINR, scaled to 0–1.',
+  unmet_sinr_quality: 'SINR quality, only while service is below target.',
+  delivery_ratio: 'Traffic delivered out of traffic requested.',
+  connectivity: 'Share of link-ticks connected.',
+  travel_fraction: 'Distance moved, out of the most possible.',
+  origin_fraction: 'Distance from the starting position.',
 }
 
 function boundLabel(value: number | null | undefined): string {
   return value === null || value === undefined ? 'unbounded / not recorded' : String(value)
 }
 
-export function ExperimentSetup({ evaluation }: { evaluation: Evaluation }) {
+export function ExperimentSetup({
+  evaluation,
+  reference,
+}: {
+  evaluation: Evaluation
+  reference?: Evaluation
+}) {
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState('All')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -55,6 +90,20 @@ export function ExperimentSetup({ evaluation }: { evaluation: Evaluation }) {
   const normalization = rec(observation.normalization)
   const components = strings(reward.components)
   const weights = bounds(reward.weights)
+  const referenceReward = rec(reference?.rewardSchema)
+  const referenceComponents = strings(referenceReward.components)
+  const referenceWeights = bounds(referenceReward.weights)
+  const differences = [...new Set([...referenceComponents, ...components])]
+    .map((name) => {
+      const current = components.indexOf(name),
+        previous = referenceComponents.indexOf(name)
+      return {
+        name,
+        current: current < 0 ? 0 : (weights[current] ?? 1),
+        previous: previous < 0 ? 0 : (referenceWeights[previous] ?? 1),
+      }
+    })
+    .filter((term) => term.current !== term.previous)
   const actions = contract?.action_meanings ?? strings(observation.action_meanings)
   const slots = contract?.slot_node_ids ?? strings(observation.slot_node_ids)
   const groups = [...new Set(names.map(featureGroup))].map((name) => ({
@@ -125,31 +174,83 @@ export function ExperimentSetup({ evaluation }: { evaluation: Evaluation }) {
       <SetupSection title="Reward">
         <div className="glass p-6 flex flex-col gap-4">
           <p className="text-base text-ink-2 leading-relaxed max-w-3xl">
-            After each decision the model gets one reward: each measured term times its weight,
-            added up. The episode return is the sum over all decisions.
+            Reward = measured value × weight. Weight ×1 leaves it unchanged. Episode return adds the
+            decision rewards.
           </p>
           {components.length > 0 ? (
             <div className="flex flex-col divide-y divide-hairline border-t border-hairline">
-              {components.map((component, index) => (
-                <div
-                  key={component}
-                  className="py-4 grid grid-cols-[4.5rem_1fr] md:grid-cols-[4.5rem_16rem_1fr] gap-x-4 gap-y-1 items-baseline"
-                >
-                  <span className="text-lg font-semibold tabular-nums text-ink-title">
-                    {weightLabel(weights[index] ?? 1)}
-                  </span>
-                  <span className="text-lg font-medium text-ink">{words(component)}</span>
-                  <span className="col-start-2 md:col-start-3 text-base text-ink-2 leading-relaxed">
-                    {REWARD_HELP[component] ?? 'Measured after the completed decision window.'}
-                  </span>
-                </div>
-              ))}
+              {components.map((component, index) => {
+                const explanation = gradedRewardExplanation(component, reward)
+                return (
+                  <div
+                    key={component}
+                    className="py-4 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-4 gap-y-2 items-baseline"
+                  >
+                    <span className="text-base font-semibold tabular-nums text-ink-title whitespace-nowrap">
+                      Weight {rewardWeightLabel(weights[index] ?? 1)}
+                    </span>
+                    <span className="text-lg font-medium text-ink">
+                      {rewardComponentLabel(component, reward) === component
+                        ? words(component)
+                        : rewardComponentLabel(component, reward)}
+                    </span>
+                    <div className="col-span-2 sm:col-span-1 sm:col-start-2 text-base text-ink-2 leading-relaxed flex flex-col gap-2">
+                      {explanation ? (
+                        <>
+                          <p>{explanation.calculation}</p>
+                          <p>
+                            <strong className="font-medium text-ink">Example: </strong>
+                            {explanation.example}
+                          </p>
+                          <p>
+                            <strong className="font-medium text-ink">Scored: </strong>
+                            {explanation.timing}
+                          </p>
+                        </>
+                      ) : (
+                        <p>
+                          {REWARD_HELP[component] ??
+                            'Measured after the completed decision window.'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="text-base text-ink-2">{String(reward.authority ?? 'Not recorded')}</div>
           )}
         </div>
       </SetupSection>
+      {reference && differences.length > 0 && (
+        <SetupSection title="Differences from Dynamic Balance">
+          <div className="glass p-6 overflow-x-auto">
+            <table className="w-full text-base">
+              <thead>
+                <tr className="text-sm text-ink-2">
+                  <th className="font-medium text-left pb-3">Term</th>
+                  <th className="font-medium text-right pb-3">Dynamic Balance</th>
+                  <th className="font-medium text-right pb-3">This reward</th>
+                </tr>
+              </thead>
+              <tbody>
+                {differences.map((term) => (
+                  <tr key={term.name} className="border-t border-hairline">
+                    <td className="py-3 text-ink">{words(term.name)}</td>
+                    <td className="text-right font-mono tabular-nums text-ink-2">
+                      {rewardWeightLabel(term.previous)}
+                    </td>
+                    <td className="text-right font-mono tabular-nums text-ink">
+                      {rewardWeightLabel(term.current)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SetupSection>
+      )}
 
       {names.length > 0 && (
         <section className="flex flex-col gap-4">

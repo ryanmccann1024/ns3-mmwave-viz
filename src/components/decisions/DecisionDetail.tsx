@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
+import { rewardComponentLabel } from '../../lib/rlLabels'
 import type { ReactNode } from 'react'
 import type { DecisionJoin, EpisodeTelemetry } from '../../lib/decisionExplorer'
-import { isUnavailable } from '../../lib/decisionExplorer'
+import { isUnavailable, slotAvailability } from '../../lib/decisionExplorer'
 import type { NodeMapping } from '../../lib/nodeIdentity'
 import type { SimFrame } from '../../types'
-import { actionColor, componentColor } from '../../styles/tokens'
+import { actionColor, componentColor, NODE_FAILURE_COLOR } from '../../styles/tokens'
 import { MOTION } from '../../styles/motion'
 import { Disclosure } from '../ui/Disclosure'
 import { ActionGlyph } from './ActionGlyph'
@@ -81,6 +82,10 @@ export function DecisionSummary({
   const meanings = contract.action_meanings
   const slotName = (s: number) => contract.slot_node_ids[s] ?? `Slot ${s}`
   const { action, outcome } = join
+  // The action was chosen from record n-1: a slot whose node was unavailable then is still
+  // configured (and sent a masked hold), but its node is offline and cannot act
+  const availability = slotAvailability(contract, join.sourceRecord)
+  const offlineSlots = availability.filter((a) => a === false).length
   const reward = outcome?.reward ?? null
   const components = reward?.components ? Object.entries(reward.components) : []
   const magnitude = components.reduce((acc, [, v]) => acc + Math.abs(v), 0) || 1
@@ -130,9 +135,16 @@ export function DecisionSummary({
         ) : (
           <>
             <section className="flex flex-col gap-3">
-              <h3 className="text-lg font-semibold tracking-tight text-ink-title">
-                What each node did
-              </h3>
+              <div className="flex items-baseline justify-between gap-4 flex-wrap">
+                <h3 className="text-lg font-semibold tracking-tight text-ink-title">
+                  What each node did
+                </h3>
+                {offlineSlots > 0 && (
+                  <span className="text-base font-medium text-ink-2 tabular-nums">
+                    {availability.length - offlineSlots} of {availability.length} able to act
+                  </span>
+                )}
+              </div>
               {!action || isUnavailable(action) ? (
                 <div className="text-base text-ink-2">This move was not recorded.</div>
               ) : (
@@ -143,7 +155,8 @@ export function DecisionSummary({
                     const changed = applied !== undefined && applied !== req
                     const move = meanings[changed ? applied : req] ?? `action ${req}`
                     const active = focusSlot === slot
-                    const color = colorBySlot?.[slot] ?? null
+                    const offline = availability[slot] === false
+                    const color = offline ? NODE_FAILURE_COLOR : (colorBySlot?.[slot] ?? null)
                     return (
                       <button
                         key={slot}
@@ -164,16 +177,25 @@ export function DecisionSummary({
                           )}
                           {slotName(slot)}
                         </span>
-                        <span className="flex items-center gap-2.5">
-                          <span
-                            className="w-3 h-3 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: actionColor(move, req) }}
-                          />
-                          <span className="text-2xl font-semibold tracking-tight text-ink-title">
-                            {words(move)}
+                        {offline ? (
+                          <>
+                            <span className="text-2xl font-semibold tracking-tight text-rose-700">
+                              Offline
+                            </span>
+                            <span className="text-base text-ink-2">Slot held, no move</span>
+                          </>
+                        ) : (
+                          <span className="flex items-center gap-2.5">
+                            <span
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: actionColor(move, req) }}
+                            />
+                            <span className="text-2xl font-semibold tracking-tight text-ink-title">
+                              {words(move)}
+                            </span>
                           </span>
-                        </span>
-                        {changed && (
+                        )}
+                        {changed && !offline && (
                           <span className="text-base text-ink-2">
                             Asked for {words(meanings[req] ?? `action ${req}`)}, which was blocked
                           </span>
@@ -211,7 +233,11 @@ export function DecisionSummary({
                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                             style={{ backgroundColor: componentColor(i) }}
                           />
-                          <span className="truncate text-ink">{words(k)}</span>
+                          <span className="truncate text-ink">
+                            {rewardComponentLabel(k, telemetry.header.reward_schema) === k
+                              ? words(k)
+                              : rewardComponentLabel(k, telemetry.header.reward_schema)}
+                          </span>
                         </span>
                         <span className="h-2.5 rounded-full bg-ink/[0.05] overflow-hidden">
                           <span
@@ -267,6 +293,7 @@ export function DecisionMore({
   const slotName = (s: number) => contract.slot_node_ids[s] ?? `Slot ${s}`
   const { input, action, outcome } = join
   const raw = useMemo(() => rawText(join), [join])
+  const availability = slotAvailability(contract, join.sourceRecord)
 
   const csvId =
     mapping.status === 'mapped' && focusSlot !== null
@@ -303,6 +330,9 @@ export function DecisionMore({
                 <span className="w-32 text-base font-medium text-ink truncate">
                   {slotName(m.slot)}
                 </span>
+                {availability[m.slot] === false && (
+                  <span className="text-base font-medium text-rose-700">Offline</span>
+                )}
                 <span className="flex items-center gap-1.5 flex-wrap">
                   {m.actions.map((a) => (
                     <ActionGlyph

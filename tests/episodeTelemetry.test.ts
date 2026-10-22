@@ -45,12 +45,33 @@ test('parses header and steps, tolerating a trailing blank line', () => {
 })
 
 test('unsupported version and malformed lines give clear errors', () => {
-  const version = parseSteps(jsonl({ ...header, telemetry_version: 2 }, step(0)))
+  const version = parseSteps(jsonl({ ...header, telemetry_version: 99 }, step(0)))
   assert.ok(!version.ok)
-  assert.match(version.message, /unsupported telemetry_version 2/)
+  assert.match(version.message, /unsupported telemetry_version 99/)
   const broken = parseSteps(jsonl(header, step(0)) + '{"type": "step", \n')
   assert.ok(!broken.ok)
   assert.match(broken.message, /line 3/)
+})
+
+test('additive v2/v3 telemetry keeps actions, facts and observation digests readable', () => {
+  for (const version of [2, 3]) {
+    const parsed = parseSteps(
+      jsonl(
+        { ...header, telemetry_version: version },
+        step(0),
+        step(1, {
+          obs_sha256: 'saved-digest',
+          reward_context: { mission: { failure: true } },
+          scored_ticks: 2,
+          facts: { node_available: [1, 0] },
+        })
+      )
+    )
+    assert.ok(parsed.ok)
+    assert.equal(parsed.steps[1].obs_sha256, 'saved-digest')
+    assert.deepEqual(parsed.steps[1].action_sent, [0, 2])
+    assert.deepEqual(parsed.steps[1].facts, { node_available: [1, 0] })
+  }
 })
 
 test('step zero has no reward yet and is skipped in the series', () => {

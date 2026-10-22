@@ -3,7 +3,8 @@
  * Animated properties are limited to color, background-color, border-color, opacity,
  * transform and box-shadow (Disclosure additionally animates grid-template-rows, and the
  * player's side panel and the tab highlight animate width so they move as one piece;
- * chart selection additionally transitions SVG stroke width and opacity).
+ * chart selection additionally transitions SVG stroke width and opacity; comparison bars
+ * grow by width and comparison markers glide by left, so rounded ends never stretch).
  * Durations and easings come from the tokens in tailwind.config.js.
  */
 export const MOTION = {
@@ -19,6 +20,10 @@ export const MOTION = {
   slide: 'transition-[transform,width] duration-base ease-standard',
   /** A side panel sliding open or shut: width and opacity together */
   panel: 'transition-[width,opacity] duration-slow ease-standard',
+  /** A comparison bar growing to its value */
+  grow: 'transition-[width,background-color] duration-slow ease-standard',
+  /** A comparison marker gliding along its track */
+  glide: 'transition-[left] duration-slow ease-standard',
   enter: 'animate-rise-in',
   enterFade: 'animate-fade-in',
   /** Page change: opacity only, so nothing grows, shifts or overflows (no scrollbar flash) */

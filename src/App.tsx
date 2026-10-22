@@ -14,6 +14,7 @@ import type { Crumb } from './components/ui/Breadcrumbs'
 import { HomePage } from './components/pages/HomePage'
 import { RunsPage } from './components/pages/RunsPage'
 import { ExperimentsPage } from './components/pages/ExperimentsPage'
+import { FoldersPage } from './components/pages/FoldersPage'
 import { ExperimentGroupPage } from './components/pages/ExperimentGroupPage'
 import type { ExperimentTab } from './components/pages/ExperimentPage'
 import { ExperimentPage } from './components/pages/ExperimentPage'
@@ -21,8 +22,10 @@ import type { PlayerPreferences } from './components/pages/PlayerPage'
 import { EMPTY_PLAYER_PREFERENCES, PlayerPage } from './components/pages/PlayerPage'
 import { MOTION } from './styles/motion'
 import { experimentLabel, policyLabel, rewardLabel } from './lib/rlLabels'
+import { familyOf, peerSize } from './lib/scenarioSizes'
 import { TrainingRunPage, trainingRunTitle } from './components/pages/TrainingRunPage'
 import { Note } from './components/ExperimentStatus'
+import { Loading } from './components/ui/Spinner'
 
 type Page = Section | 'group' | 'experiment' | 'training' | 'player'
 
@@ -46,6 +49,10 @@ export default function App() {
   /** folder key of the experiment whose scenarios are listed (or whose scenario is open) */
   const [groupKey, setGroupKey] = useState<string | null>(null)
   const [trainingError, setTrainingError] = useState<string | null>(null)
+  /** the scenario folder last asked for, ahead of it loading, so a size switch shows at once */
+  const [experimentRoot, setExperimentRoot] = useState<string | null>(null)
+  /** team size last opened, so the next scenario with sizes opens at the same one */
+  const [preferredPeers, setPreferredPeers] = useState<number | null>(null)
   // Compatible player choices (string node id, tab, chart metric) carried across episodes;
   // the keyed PlayerPage remount still resets everything episode-relative
   const [playerPreferences, setPlayerPreferences] =
@@ -74,18 +81,23 @@ export default function App() {
       routesFile: run.routesFile,
       nodesJsonFile: run.nodesJsonFile,
       jammersJsonFile: run.jammersJsonFile,
+      runIniFile: run.runIniFile,
       mcsFile: run.mcsFile,
       rxPowerFile: run.rxPowerFile,
     })
   }
 
-  function openExperiment(root: ExperimentRoot) {
-    if (!workspace.catalog) return
+  /** `keepTab` when switching team size, so the same view of the other size shows */
+  function openExperiment(root: ExperimentRoot, keepTab = false) {
+    if (!workspace.fullCatalog) return
     setEpisodeError(null)
-    setExperimentTab('results')
+    if (!keepTab) setExperimentTab('results')
+    setExperimentRoot(root.root)
+    const peers = peerSize(root.root.split('/').pop() ?? '')?.peers
+    if (peers !== undefined) setPreferredPeers(peers)
     setGroupKey(experimentGroup(root.root).key)
     setPage('experiment')
-    session.openExperiment(workspace.catalog, root)
+    session.openExperiment(workspace.fullCatalog, root)
   }
 
   function openGroup(key: string) {
@@ -101,9 +113,9 @@ export default function App() {
   }
 
   async function playTrainingEpisode(run: TrainingRun, episode: TrainingEpisode) {
-    if (!workspace.catalog) return
+    if (!workspace.fullCatalog) return
     setTrainingError(null)
-    const result = await readPlaybackFiles(workspace.catalog, episode.files, episode.dir)
+    const result = await readPlaybackFiles(workspace.fullCatalog, episode.files, episode.dir)
     if (!result.ok) {
       setTrainingError(`Episode ${episode.index}: ${result.message}`)
       return
@@ -146,6 +158,20 @@ export default function App() {
   // The experiment a scenario belongs to, as a way back to its list of scenarios
   const groupCrumbs: Crumb[] =
     group && groupTitle ? [{ label: groupTitle, onClick: () => openGroup(group.key) }] : []
+  // The open scenario's other team sizes, when it has any
+  const family = experimentRoot ? familyOf(workspace.experimentRoots, experimentRoot) : null
+  const sizes =
+    family && family.sizes.length > 1
+      ? {
+          family: experimentLabel(family.stem),
+          peers: family.sizes.map((s) => s.peers ?? 0),
+          value: family.sizes.find((s) => s.root.root === experimentRoot)?.peers ?? 0,
+          onChange: (peers: number) => {
+            const next = family.sizes.find((s) => s.peers === peers)
+            if (next && next.root.root !== experimentRoot) openExperiment(next.root, true)
+          },
+        }
+      : undefined
   const experimentName = session.experiment
     ? experimentLabel(folderLabel(session.experiment.root).name || session.experiment.name)
     : ''
@@ -231,8 +257,8 @@ export default function App() {
         : null
     // A standalone baseline seed carries its manifest metadata; the catalog reads its plan lazily
     const baseline =
-      playing?.kind === 'run' && playing.run.baseline && workspace.catalog
-        ? { meta: playing.run.baseline, catalog: workspace.catalog }
+      playing?.kind === 'run' && playing.run.baseline && workspace.fullCatalog
+        ? { meta: playing.run.baseline, catalog: workspace.fullCatalog }
         : null
     content = (
       <PlayerPage
@@ -267,11 +293,14 @@ export default function App() {
           onTab={setExperimentTab}
           trainingRoots={workspace.allTrainingRoots}
           onOpenTrainingRun={openTrainingRun}
+          sizes={sizes}
         />
       ) : session.error ? (
         <Note tone="error">{session.error}</Note>
       ) : (
-        <div className="text-sm text-muted">Reading experiment…</div>
+        <div className="flex-1 flex items-center justify-center py-16" aria-busy="true">
+          <Loading label="Reading experiment" size="lg" stacked />
+        </div>
       )
   } else if (page === 'group' && group && groupTitle) {
     content = (
@@ -279,6 +308,7 @@ export default function App() {
         catalog={workspace.catalog}
         title={groupTitle}
         roots={group.roots}
+        preferredPeers={preferredPeers}
         onHome={() => navigate('home')}
         onExperiments={() => navigate('experiments')}
         onOpenScenario={openExperiment}
@@ -286,6 +316,8 @@ export default function App() {
     )
   } else if (page === 'runs') {
     content = <RunsPage workspace={workspace} onOpenRun={(run) => openRun(run, 'runs')} />
+  } else if (page === 'folders') {
+    content = <FoldersPage workspace={workspace} />
   } else if (page === 'experiments') {
     content = (
       <ExperimentsPage
@@ -298,10 +330,10 @@ export default function App() {
         }}
       />
     )
-  } else if (page === 'training' && trainingRoot !== null && workspace.catalog) {
+  } else if (page === 'training' && trainingRoot !== null && workspace.fullCatalog) {
     content = (
       <TrainingRunPage
-        catalog={workspace.catalog}
+        catalog={workspace.fullCatalog}
         root={trainingRoot}
         onHome={() => navigate('home')}
         onExperiments={() => navigate('experiments')}

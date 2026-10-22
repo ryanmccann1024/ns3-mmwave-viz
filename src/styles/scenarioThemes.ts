@@ -14,6 +14,10 @@ export interface ScenarioTheme {
   backgroundBlurriness: number
   sceneryType: 'rural' | 'urban-macro' | 'urban-micro' | 'indoor' | 'none'
   canvasBackground: string
+  /** colour of the faint line marking the simulated area's edge */
+  boundaryColor: string
+  /** realistic ground painted from the building layout; null keeps the plain grid look */
+  site: 'urban' | 'rural' | 'indoor' | null
 }
 
 const SCENARIO_THEMES: Record<string, ScenarioTheme> = {
@@ -32,6 +36,8 @@ const SCENARIO_THEMES: Record<string, ScenarioTheme> = {
     backgroundBlurriness: 0.0,
     sceneryType: 'rural',
     canvasBackground: '#87CEEB',
+    boundaryColor: '#f5efe3',
+    site: 'rural',
   },
   UMa: {
     groundColor: '#4a4a4a',
@@ -48,6 +54,8 @@ const SCENARIO_THEMES: Record<string, ScenarioTheme> = {
     backgroundBlurriness: 0.0,
     sceneryType: 'urban-macro',
     canvasBackground: '#c0c8d0',
+    boundaryColor: '#f8fafc',
+    site: 'urban',
   },
   UMi: {
     groundColor: '#555555',
@@ -64,6 +72,8 @@ const SCENARIO_THEMES: Record<string, ScenarioTheme> = {
     backgroundBlurriness: 0.1,
     sceneryType: 'urban-micro',
     canvasBackground: '#b0b8c0',
+    boundaryColor: '#f8fafc',
+    site: 'urban',
   },
   InH: {
     groundColor: '#c8c0b8',
@@ -80,6 +90,8 @@ const SCENARIO_THEMES: Record<string, ScenarioTheme> = {
     backgroundBlurriness: 0.6,
     sceneryType: 'indoor',
     canvasBackground: '#f0f0f0',
+    boundaryColor: '#475569',
+    site: 'indoor',
   },
   default: {
     groundColor: '#040d1a',
@@ -96,6 +108,8 @@ const SCENARIO_THEMES: Record<string, ScenarioTheme> = {
     backgroundBlurriness: 0,
     sceneryType: 'none',
     canvasBackground: '#ffffff',
+    boundaryColor: '#94a3b8',
+    site: null,
   },
 }
 
@@ -105,5 +119,9 @@ export function getScenarioTheme(scenario: string): ScenarioTheme {
   if (s.startsWith('uma')) return SCENARIO_THEMES.UMa
   if (s.startsWith('umi')) return SCENARIO_THEMES.UMi
   if (s.startsWith('inh')) return SCENARIO_THEMES.InH
+  // free-form scenario names, e.g. "phase-1-urban-recovery"
+  if (/rural|farm|countryside/.test(s)) return SCENARIO_THEMES.RMa
+  if (/indoor|office|factory|warehouse/.test(s)) return SCENARIO_THEMES.InH
+  if (/urban|city|street|downtown/.test(s)) return SCENARIO_THEMES.UMi
   return SCENARIO_THEMES.default
 }

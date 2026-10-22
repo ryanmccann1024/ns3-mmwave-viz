@@ -2,9 +2,12 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import type { SimFrame, SimMeta, BuildingState, JammerState } from '../types'
 import { parseMeta, parseBuildings, parseFiles } from '../lib/parseSimFiles'
 import { parseJammers, jammerPositionAt } from '../lib/jammers'
+import { parseRadioChannel } from '../lib/runIni'
+import type { RadioChannel } from '../lib/runIni'
 import type { DeclaredNodeIds } from '../lib/nodeIdentity'
 import { parseArchivedNodeIds } from '../lib/nodeIdentity'
 import { frameIndexAtTime, frameIndexForDecisionWindow } from '../lib/frameSeek'
+import type { ScenarioInputSources } from '../lib/scenarioInputs'
 
 /** Boundary slack when matching a playback frame to a decision interval (seconds). */
 export const SEEK_TOLERANCE_S = 1e-6
@@ -18,6 +21,8 @@ export interface SceneBounds {
   planeSize: number
   /** width of the area the nodes actually use, for framing the camera */
   viewSpan: number
+  /** sim-coordinate rectangle the scenario occupies, drawn as the field boundary */
+  extent?: { minX: number; maxX: number; minY: number; maxY: number }
 }
 
 const DEFAULT_BOUNDS: SceneBounds = { cx: 75, cy: 75, gridSize: 500, planeSize: 600, viewSpan: 500 }
@@ -31,9 +36,13 @@ interface SimDataState {
   meta: SimMeta | null
   buildings: BuildingState[]
   jammers: JammerState[]
+  /** channel settings from the archived run.ini, when one was loaded */
+  channel: RadioChannel | null
   sceneBounds: SceneBounds
   /** ordered node IDs from the archived inputs/nodes.json, when one was loaded */
   declaredNodeIds: DeclaredNodeIds
+  /** where nodes.json and buildings.json came from, when the loader reported it */
+  inputSources: ScenarioInputSources | null
 }
 
 function computeBounds(
@@ -83,7 +92,7 @@ function computeBounds(
   // scenes (tens of metres) would otherwise open as specks in a large empty plane
   const viewSpan = Math.min(gridSize, Math.max(120, maxSpan * 1.6))
 
-  return { cx, cy, gridSize, planeSize, viewSpan }
+  return { cx, cy, gridSize, planeSize, viewSpan, extent: { minX, maxX, minY, maxY } }
 }
 
 export type UseSimDataReturn = SimDataState & {
@@ -100,8 +109,10 @@ export type UseSimDataReturn = SimDataState & {
     routesFile?: File
     nodesJsonFile?: File
     jammersJsonFile?: File
+    runIniFile?: File
     mcsFile?: File
     rxPowerFile?: File
+    inputSources?: ScenarioInputSources
   }) => void
   reset: () => void
   play: () => void
@@ -133,8 +144,10 @@ export function useSimData(): UseSimDataReturn {
     meta: null,
     buildings: [],
     jammers: [],
+    channel: null,
     sceneBounds: DEFAULT_BOUNDS,
     declaredNodeIds: { status: 'absent' },
+    inputSources: null,
   })
 
   const rafRef = useRef<number | null>(null)
@@ -226,8 +239,10 @@ export function useSimData(): UseSimDataReturn {
       routesFile?: File
       nodesJsonFile?: File
       jammersJsonFile?: File
+      runIniFile?: File
       mcsFile?: File
       rxPowerFile?: File
+      inputSources?: ScenarioInputSources
     }) => {
       const readFile = (f: File) =>
         new Promise<string>((res) => {
@@ -247,6 +262,7 @@ export function useSimData(): UseSimDataReturn {
         optRead(files.routesFile),
         optRead(files.nodesJsonFile),
         optRead(files.jammersJsonFile),
+        optRead(files.runIniFile),
         optRead(files.mcsFile),
         optRead(files.rxPowerFile),
       ]).then(
@@ -258,6 +274,7 @@ export function useSimData(): UseSimDataReturn {
           routesText,
           nodesJsonText,
           jammersJsonText,
+          runIniText,
           mcsText,
           rxPowerText,
         ]) => {
@@ -275,6 +292,11 @@ export function useSimData(): UseSimDataReturn {
           })
           const buildings = buildingsText ? parseBuildings(buildingsText) : []
           const jammers = jammersJsonText ? parseJammers(jammersJsonText) : []
+          const channel = runIniText ? parseRadioChannel(runIniText) : null
+          // positions.csv may not carry the scenario; the archived run.ini always does
+          if (channel && (!meta.scenario || meta.scenario === 'Unknown')) {
+            meta.scenario = channel.scenario
+          }
           const sceneBounds = computeBounds(frames, buildings, jammers)
           const declaredNodeIds = parseArchivedNodeIds(nodesJsonText)
           framesLenRef.current = frames.length
@@ -290,8 +312,10 @@ export function useSimData(): UseSimDataReturn {
             meta,
             buildings,
             jammers,
+            channel,
             sceneBounds,
             declaredNodeIds,
+            inputSources: files.inputSources ?? null,
           })
         }
       )
@@ -315,8 +339,10 @@ export function useSimData(): UseSimDataReturn {
       meta: null,
       buildings: [],
       jammers: [],
+      channel: null,
       sceneBounds: DEFAULT_BOUNDS,
       declaredNodeIds: { status: 'absent' },
+      inputSources: null,
     })
   }, [stopInterval])
 

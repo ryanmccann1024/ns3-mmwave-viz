@@ -13,6 +13,10 @@ export interface PolicyDelivery {
 export function policyDelivery(experiment: Pick<Experiment, 'evaluations'>): PolicyDelivery[] {
   const sums = new Map<string, { sum: number; n: number }>()
   for (const evaluation of experiment.evaluations) {
+    // Adaptation and its sampled control are a separate comparison, not extra
+    // held-out model evaluations in the scenario overview.
+    if (evaluation.provenance?.kind === 'online' || evaluation.provenance?.kind === 'fixed')
+      continue
     for (const episode of evaluation.episodes) {
       if (episode.status !== 'completed') continue
       const value = episode.metrics?.delivery_ratio

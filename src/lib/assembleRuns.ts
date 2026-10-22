@@ -22,6 +22,7 @@ export interface RunEntry {
   routesFile?: File
   nodesJsonFile?: File
   jammersJsonFile?: File
+  runIniFile?: File
   mcsFile?: File
   rxPowerFile?: File
   /** Standalone baseline manifest metadata, attached after discovery */
@@ -41,6 +42,7 @@ const SEED_LEVEL_FILES = new Set([
   'routes.csv',
   'nodes.json',
   'jammers.json',
+  'run.ini',
   'mcs.csv',
   'rx-power.csv',
 ])
@@ -88,6 +90,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
     routes?: File
     nodesJson?: File
     jammersJson?: File
+    runIni?: File
     mcs?: File
     rxPower?: File
   }
@@ -95,6 +98,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
   const sharedBuildings = new Map<string, File>()
   const sharedNodesJson = new Map<string, File>()
   const sharedJammersJson = new Map<string, File>()
+  const sharedRunIni = new Map<string, File>()
 
   for (const { path, file } of pairs) {
     if (!isLegacyRunPath(path)) continue
@@ -141,10 +145,15 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
       }
     }
 
-    // Also check for buildings*.json / nodes.json inside inputs/ subfolder:
+    // Also check for buildings*.json / nodes.json / jammers.json / run.ini inside inputs/:
     // Timestamp level: YYYY-MM/DD/HH-MM-SS/inputs/buildings*.json
     // Point level:     YYYY-MM/DD/HH-MM-SS/point-NNN/inputs/buildings*.json
-    if (isBuildingsFile(fname) || fname === 'nodes.json' || fname === 'jammers.json') {
+    if (
+      isBuildingsFile(fname) ||
+      fname === 'nodes.json' ||
+      fname === 'jammers.json' ||
+      fname === 'run.ini'
+    ) {
       const parentDir = parts[parts.length - 2]
       if (parentDir === 'inputs' || parentDir === 'input') {
         // Check if this is point-level or timestamp-level
@@ -175,6 +184,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
               if (isBuildingsFile(fname) && !entry.buildings) entry.buildings = file
               if (fname === 'nodes.json' && !entry.nodesJson) entry.nodesJson = file
               if (fname === 'jammers.json' && !entry.jammersJson) entry.jammersJson = file
+              if (fname === 'run.ini' && !entry.runIni) entry.runIni = file
             }
           }
           // Stash for runs discovered later in the loop
@@ -184,6 +194,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
             sharedNodesJson.set(sharedKey, file)
           if (fname === 'jammers.json' && !sharedJammersJson.has(sharedKey))
             sharedJammersJson.set(sharedKey, file)
+          if (fname === 'run.ini' && !sharedRunIni.has(sharedKey)) sharedRunIni.set(sharedKey, file)
         }
       }
     }
@@ -208,6 +219,10 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         (ptKey ? sharedJammersJson.get(ptKey) : undefined) ?? sharedJammersJson.get(tsKey)
       if (shared) entry.jammersJson = shared
     }
+    if (!entry.runIni) {
+      const shared = (ptKey ? sharedRunIni.get(ptKey) : undefined) ?? sharedRunIni.get(tsKey)
+      if (shared) entry.runIni = shared
+    }
   }
 
   const runs: RunEntry[] = []
@@ -228,6 +243,7 @@ export function assembleRuns(pairs: FilePair[]): RunEntry[] {
         routesFile: e.routes,
         nodesJsonFile: e.nodesJson,
         jammersJsonFile: e.jammersJson,
+        runIniFile: e.runIni,
         mcsFile: e.mcs,
         rxPowerFile: e.rxPower,
       })

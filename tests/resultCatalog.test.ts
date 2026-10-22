@@ -122,8 +122,49 @@ test('dev catalog fetches bytes only in getFile', async (t) => {
   ])
 })
 
+test('large folder keeps experiments after 50,000 replay files without reading bytes', async () => {
+  let reads = 0
+  const file = (name: string) =>
+    ({
+      kind: 'file',
+      name,
+      getFile: async () => {
+        reads += 1
+        return new File(['{}'], name)
+      },
+    }) as FileSystemFileHandle
+  const leaf = (name: string, filename: string) =>
+    ({
+      kind: 'directory',
+      name,
+      async *[Symbol.asyncIterator]() {
+        yield [filename, file(filename)]
+      },
+    }) as FileSystemDirectoryHandle
+  const root = {
+    kind: 'directory',
+    name: 'outputs',
+    async *[Symbol.asyncIterator]() {
+      // The iterative walker visits this experiment after all replay directories.
+      yield ['last-experiment', leaf('last-experiment', 'experiment_plan.json')]
+      for (let i = 0; i < 50_001; i++) {
+        const name = `replay-${i}`
+        yield [name, leaf(name, 'positions.csv')]
+      }
+    },
+  } as FileSystemDirectoryHandle
+  const catalog = await catalogFromDirectoryHandle(root)
+  assert.equal(catalog.paths().length, 50_002)
+  assert.equal(catalog.truncated, false)
+  assert.equal(catalog.has('last-experiment/experiment_plan.json'), true)
+  assert.equal(reads, 0)
+  assert.ok(await catalog.getFile('last-experiment/experiment_plan.json'))
+  assert.equal(reads, 1)
+})
+
 test('baseline manifests and plans are catalog files; logs are not', () => {
   assert.equal(isCatalogFile(['baseline_manifest.json']), true)
+  assert.equal(isCatalogFile(['custom', '10-16-2', 'campaign_status.json']), true)
   assert.equal(isCatalogFile(['effective-inputs', 'baseline-plan.json']), true)
   assert.equal(
     isCatalogFile('2026-09/30/12-00-00-baseline/baseline_manifest.json'.split('/')),
@@ -132,6 +173,7 @@ test('baseline manifests and plans are catalog files; logs are not', () => {
   assert.equal(isCatalogFile(['planner.log']), false)
   assert.equal(isCatalogFile(['sim.log']), false)
   assert.equal(isCatalogFile(['source-inputs', 'run.ini']), false)
+  assert.equal(isCatalogFile(['custom', 'run', 'inputs', 'run.ini']), true)
   // summary.json behavior is unchanged
   assert.equal(isCatalogFile(['seed-1', 'summary.json']), true)
   for (const bad of ['../x', '/abs', 'a\\b']) assert.equal(normalizeRelPath(bad), null, bad)

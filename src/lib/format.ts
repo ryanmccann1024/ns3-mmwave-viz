@@ -95,8 +95,15 @@ export function experimentGroup(root: string): {
     date = `${MONTHS[month - 1] ?? month} ${Number(parts[ym + 1])}`
     rest = parts.slice(ym + 2)
   } else {
+    const campaign = parts.findIndex(
+      (p) => /^\d{2}-\d{2}-\d+$/.test(p) && Number(p.slice(0, 2)) <= 12
+    )
     const md = parts.findIndex((p) => /^\d{2}-\d{2}$/.test(p) && Number(p.slice(0, 2)) <= 12)
-    if (md >= 0) {
+    if (campaign >= 0) {
+      const [month, day] = parts[campaign].split('-').map(Number)
+      date = `${MONTHS[month - 1]} ${day}`
+      rest = parts.slice(campaign + 1)
+    } else if (md >= 0) {
       const [month, day] = parts[md].split('-').map(Number)
       date = `${MONTHS[month - 1]} ${day}`
       rest = parts.slice(md + 1)
@@ -133,6 +140,18 @@ function belowDate(parts: string[]): { index: number; date: string | null } {
   if (ym >= 0) {
     const month = Number(parts[ym].slice(5))
     return { index: ym + 2, date: `${MONTHS[month - 1] ?? month} ${Number(parts[ym + 1])}` }
+  }
+  const campaign = parts.findIndex(
+    (p) => /^\d{2}-\d{2}-\d+$/.test(p) && Number(p.slice(0, 2)) <= 12
+  )
+  if (campaign >= 0) {
+    const [month, day] = parts[campaign].split('-').map(Number)
+    return { index: campaign, date: `${MONTHS[month - 1]} ${day}` }
+  }
+  const mission = parts.findIndex((p, i) => /^\d{2}-\d{2}$/.test(p) && parts[i + 1] === 'main')
+  if (mission >= 0) {
+    const [month, day] = parts[mission].split('-').map(Number)
+    return { index: mission, date: `${MONTHS[month - 1]} ${day}` }
   }
   const md = parts.findIndex((p) => /^\d{2}-\d{2}$/.test(p) && Number(p.slice(0, 2)) <= 12)
   if (md >= 0) {
@@ -193,9 +212,11 @@ export function groupProjects<T extends { root: string }>(
     tops.set(loc.parent, list)
   }
   const baseOf = (parent: string, top: string) =>
-    (tops.get(parent) ?? [])
-      .filter((t) => top === t || top.startsWith(t + '-'))
-      .reduce((a, b) => (b.length < a.length ? b : a), top)
+    /^\d{2}-\d{2}(?:-\d+)?$/.test(top)
+      ? top
+      : (tops.get(parent) ?? [])
+          .filter((t) => top === t || top.startsWith(t + '-'))
+          .reduce((a, b) => (b.length < a.length ? b : a), top)
   const shortOf = (base: string, top: string, below: string[]) =>
     [...(top === base ? [] : [top.slice(base.length + 1)]), ...below]
       .map((p) => scenarioLabel(p).title)
@@ -208,7 +229,13 @@ export function groupProjects<T extends { root: string }>(
     const key = parent ? `${parent}/${base}` : base
     let project = projects.find((p) => p.key === key)
     if (!project) {
-      project = { key, title: scenarioLabel(base).title, date, experiments: [], training: [] }
+      project = {
+        key,
+        title: /^\d{2}-\d{2}(?:-\d+)?$/.test(base) ? base : scenarioLabel(base).title,
+        date,
+        experiments: [],
+        training: [],
+      }
       projects.push(project)
     }
     const short = shortOf(base, top, below)

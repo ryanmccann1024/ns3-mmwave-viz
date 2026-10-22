@@ -13,16 +13,23 @@ import {
 } from '../../lib/decisionExplorer'
 import type { NodeMapping } from '../../lib/nodeIdentity'
 import { buildNodeMapping } from '../../lib/nodeIdentity'
+import { nodeOutages, outageNodeName } from '../../lib/nodeOutages'
+import { OutageNotice, useOutageNotice } from '../OutageNotice'
+import { JammerMapLegend, useJammerMap } from '../JammerMap'
+import { distanceToTarget, missionOverlay, type InvestigationTarget } from '../../lib/missionTarget'
+import { Row } from '../ui/Row'
 import { DecisionExplorer } from '../decisions/DecisionExplorer'
 import { Note } from '../ExperimentStatus'
 import type { OverlayOption } from '../../hooks/useExperimentSession'
-import type { LogEntry } from '../../types'
+import type { LogEntry, SimFrame } from '../../types'
 import type { ResultCatalog } from '../../lib/resultCatalog'
 import type { Episode, Evaluation } from '../../lib/experimentIndex'
 import type { BaselineRunMeta } from '../../lib/baselineRuns'
 import type { BaselinePlan } from '../../lib/baselineManifest'
 import { parseBaselinePlan } from '../../lib/baselineManifest'
 import { freqLabel } from '../../lib/format'
+import { policyLabel } from '../../lib/rlLabels'
+import { trailColor } from '../../styles/tokens'
 import { jammerActivity, jammerPositionAt } from '../../lib/jammers'
 import type { Trail } from '../canvas/TrajectoryLayer'
 import { NetworkCanvas } from '../canvas/NetworkCanvas'
@@ -37,6 +44,7 @@ import type { Crumb } from '../ui/Breadcrumbs'
 import { Button, SECONDARY_BUTTON } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
 import { StatItem } from '../ui/StatItem'
+import { Loading } from '../ui/Spinner'
 import {
   BaselineProvenance,
   BaselineSetupLine,
@@ -229,6 +237,84 @@ function FullscreenIcon({ exit }: { exit: boolean }) {
   )
 }
 
+/** Names the path overlays: the replay's own paths, and other policies' position ghosts */
+function TrailKey({
+  trails,
+  replayPolicy,
+  below,
+}: {
+  trails: Trail[]
+  replayPolicy: string
+  /** pushed down under the placement control */
+  below: boolean
+}) {
+  const policies = [...new Set(trails.map((t) => t.policy))]
+  if (policies.length === 0) return null
+  return (
+    <div
+      className={`glass-chip absolute left-3 z-10 flex flex-col gap-1.5 px-4 py-3 ${below ? 'top-20' : 'top-3'} ${MOTION.enterFade}`}
+    >
+      {policies.map((policy) => (
+        <span key={policy} className="flex items-center gap-2.5 text-base text-ink">
+          {policy === replayPolicy ? (
+            <span
+              className="w-5 h-1 rounded-full flex-shrink-0"
+              style={{ backgroundColor: trailColor(policy) }}
+            />
+          ) : (
+            <span
+              className="w-3.5 h-3.5 mx-[3px] rounded-full border-2 flex-shrink-0"
+              style={{ borderColor: trailColor(policy) }}
+            />
+          )}
+          {policy === replayPolicy ? `${policyLabel(policy)} paths` : policyLabel(policy)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** Where the investigation sends its investigator, and how close it is at this frame */
+function InvestigationSummary({
+  target,
+  investigatorCsvId,
+  frame,
+}: {
+  target: InvestigationTarget
+  investigatorCsvId: number | null
+  frame: SimFrame
+}) {
+  const investigator =
+    investigatorCsvId === null ? undefined : frame.nodes.find((n) => n.id === investigatorCsvId)
+  const distance = investigator ? distanceToTarget(investigator, target) : null
+  const inside = distance !== null && distance <= target.arrivalRadiusM
+  const team = target.teamInvestigation === true
+  const teamInside = frame.nodes.filter(
+    (n) => distanceToTarget(n, target) <= (target.teamRadiusM ?? 50)
+  ).length
+  return (
+    <Section title={team ? 'Team investigation' : 'Investigation'}>
+      <div className="flex flex-col">
+        <Row label="Target" value={`${target.x.toFixed(0)}, ${target.y.toFixed(0)} m`} />
+        {team && <Row label="Team at target" value={`${teamInside} of ${frame.nodes.length}`} />}
+        <Row
+          label={team ? 'Lead peer' : 'Investigator'}
+          value={
+            investigatorCsvId === null
+              ? target.investigatorId
+              : `${target.investigatorId} (node ${investigatorCsvId})`
+          }
+        />
+        <Row
+          label="Distance"
+          value={distance === null ? '–' : inside ? 'Arrived' : `${distance.toFixed(0)} m`}
+        />
+        <Row label="Arrival radius" value={`${target.arrivalRadiusM} m`} />
+      </div>
+    </Section>
+  )
+}
+
 function Section({
   title,
   aside,
@@ -334,6 +420,34 @@ export function PlayerPage({
   }, [telemetry, firstFrame, declaredNodeIds])
   const mapped = mapping.status === 'mapped' ? mapping : null
 
+  const outages = useMemo(() => nodeOutages(sim.frames), [sim.frames])
+  const jammerMap = useJammerMap(sim)
+  const outageMarkers = useMemo(
+    () =>
+      outages.map((o) => ({
+        frameIndex: o.frameIndex,
+        label: `${outageNodeName(o)} going offline at ${o.downAt.toFixed(1)} s`,
+      })),
+    [outages]
+  )
+
+  // Playing or seeking forward across a failure shows a short notice over the canvas, so it
+  // is caught even when the node is out of view
+  const outageNotice = useOutageNotice(outages, sim.frameIndex)
+
+  // An investigation's goal comes from the evaluation contract; its investigator is found
+  // through the same checked ordinal mapping as decisions, so it needs no telemetry
+  const contract = rl?.evaluation.contract ?? null
+  const mission = useMemo(
+    () =>
+      missionOverlay(
+        contract,
+        firstFrame ? new Set(firstFrame.nodes.map((n) => n.id)) : null,
+        declaredNodeIds.status === 'valid' ? declaredNodeIds.ids : undefined
+      ),
+    [contract, firstFrame, declaredNodeIds]
+  )
+
   // Restore the compatible node choice once the mapping for this episode is proved
   const restoredRef = useRef(false)
   useEffect(() => {
@@ -407,12 +521,8 @@ export function PlayerPage({
   const frame = sim.currentFrame
   if (!frame) {
     return (
-      <div
-        className="flex-1 flex items-center justify-center text-base text-ink-2"
-        aria-busy="true"
-        role="status"
-      >
-        Loading simulation…
+      <div className="flex-1 flex items-center justify-center" aria-busy="true">
+        <Loading label="Loading simulation" size="lg" stacked />
       </div>
     )
   }
@@ -468,7 +578,10 @@ export function PlayerPage({
   const link = selectedLink
     ? (links.find((l) => `${l.nodeA}-${l.nodeB}` === selectedLink) ?? null)
     : null
-  const sinrLinks = links.filter((l) => l.sinr !== undefined)
+  // Rows for an offline node stay in links.csv (SINR -999 dB, no capacity) but are not links
+  const activeIds = new Set(nodes.filter((n) => n.active).map((n) => n.id))
+  const liveLinks = links.filter((l) => activeIds.has(l.nodeA) && activeIds.has(l.nodeB))
+  const sinrLinks = liveLinks.filter((l) => l.sinr !== undefined && l.sinr > -900)
   const avgSinr = sinrLinks.length
     ? sinrLinks.reduce((s, l) => s + (l.sinr ?? 0), 0) / sinrLinks.length
     : null
@@ -525,7 +638,7 @@ export function PlayerPage({
             />
             <StatItem
               label="Links up"
-              value={`${links.filter((l) => l.connected).length}/${links.length}`}
+              value={`${liveLinks.filter((l) => l.connected).length}/${liveLinks.length}`}
             />
             <StatItem
               label="Avg SINR"
@@ -555,9 +668,9 @@ export function PlayerPage({
             }
           >
             {node ? (
-              <NodeDetail node={node} links={links} />
+              <NodeDetail node={node} links={links} nodes={nodes} />
             ) : link ? (
-              <LinkDetail link={link} />
+              <LinkDetail link={link} nodes={nodes} />
             ) : (
               <div className="text-base text-ink-2">
                 Click a node or link in the scene, or pick one under Nodes.
@@ -572,11 +685,13 @@ export function PlayerPage({
           {(baseline?.meta.planPath || rlBaseline?.planPath) && (
             <Section title="Placement">
               {plan === 'loading' ? (
-                <div className="text-base text-ink-2">Loading placement…</div>
+                <Loading label="Loading placement" size="sm" />
               ) : plan === 'unavailable' ? (
                 <div className="text-base text-ink-2">Placement plan unavailable.</div>
               ) : (
-                <PlanPreview plan={plan} />
+                <div className={MOTION.page}>
+                  <PlanPreview plan={plan} />
+                </div>
               )}
             </Section>
           )}
@@ -651,7 +766,12 @@ export function PlayerPage({
       {tab === 'nodes' && (
         <div className="flex flex-col gap-6">
           <Section title={`Nodes (${nodes.length})`}>
-            <NodeList frame={frame} selectedNode={selectedNode} onSelectNode={selectNode} />
+            <NodeList
+              frame={frame}
+              selectedNode={selectedNode}
+              onSelectNode={selectNode}
+              outages={outages}
+            />
           </Section>
           {flows.length > 0 && (
             <Section title={`Flows (${flows.length})`}>
@@ -669,6 +789,15 @@ export function PlayerPage({
         </div>
       )}
 
+      {tab === 'episode' && rl && mission && (
+        <div className="mb-6">
+          <InvestigationSummary
+            target={mission.target}
+            investigatorCsvId={mission.investigatorCsvId}
+            frame={frame}
+          />
+        </div>
+      )}
       {tab === 'episode' && rl && (
         <EpisodeDetails
           catalog={rl.catalog}
@@ -680,6 +809,7 @@ export function PlayerPage({
           onToggleOverlay={rl.onToggleOverlay}
           trailNode={rl.trailNode}
           onTrailNode={rl.onTrailNode}
+          inputSources={sim.inputSources}
         />
       )}
 
@@ -689,7 +819,12 @@ export function PlayerPage({
 
   const decisionsView = rl ? (
     <div className="flex flex-col gap-4 sm:gap-5 pb-2">
-      {uncontrolledNode !== null && <Note>Node {uncontrolledNode} is not policy-controlled.</Note>}
+      {uncontrolledNode !== null && (
+        <Note>
+          {frame.nodes.find((n) => n.id === uncontrolledNode)?.name ?? `Node ${uncontrolledNode}`}{' '}
+          is not policy-controlled.
+        </Note>
+      )}
       <DecisionExplorer
         episode={rl.episode}
         telemetryState={telemetryState}
@@ -776,15 +911,18 @@ export function PlayerPage({
                   jammers={sim.jammers}
                   sceneBounds={sim.sceneBounds}
                   meta={sim.meta}
+                  channel={sim.channel}
                   compact={sim.compact}
                   selectedNode={selectedNode}
                   selectedLink={selectedLink}
                   selectedFlow={selectedFlow}
                   onSelectNode={selectNode}
                   onSelectLink={selectLink}
+                  mission={mission}
                   trails={rl?.trails}
                   replayPolicy={rl?.episode.policy}
                   placementPlan={showPlacement ? placementPlan : null}
+                  jammerMap={jammerMap.map}
                 />
                 {placementPlan && (
                   <div
@@ -803,10 +941,38 @@ export function PlayerPage({
                     />
                   </div>
                 )}
+                {rl && (
+                  <TrailKey
+                    trails={rl.trails}
+                    replayPolicy={rl.episode.policy}
+                    below={placementPlan !== null}
+                  />
+                )}
+                <OutageNotice outages={outageNotice} onSelectNode={selectNode} />
+                <JammerMapLegend state={jammerMap} sim={sim} timeS={frame.time} />
                 <div
                   className="absolute top-3 right-3 z-10 flex items-center gap-2"
                   title="Compact view compresses distances for visibility; to-scale view preserves geometry."
                 >
+                  {jammerMap.present && (
+                    <button
+                      type="button"
+                      onClick={jammerMap.toggle}
+                      disabled={jammerMap.unavailable !== null}
+                      aria-pressed={jammerMap.on}
+                      title={
+                        jammerMap.unavailable ??
+                        (jammerMap.on
+                          ? 'Hide the jamming map'
+                          : 'Show how strongly the jammer reaches each spot')
+                      }
+                      className={`${SECONDARY_BUTTON} !h-11 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        jammerMap.on ? '!bg-accent-wash !text-accent-ink' : ''
+                      }`}
+                    >
+                      Jamming map
+                    </button>
+                  )}
                   <Segmented
                     size="lg"
                     options={[
@@ -875,6 +1041,7 @@ export function PlayerPage({
             onPause={sim.pause}
             onSeek={onSeek}
             onSetSpeed={onSetSpeed}
+            markers={outageMarkers}
           />
 
           {!isDesktop && view !== 'comparison' && (

@@ -1,0 +1,848 @@
+/*
+ * ns3-mmwave-viz site layer over doxygen-awesome-css.
+ *
+ * A copy of the simulator site's theme/mesh-sim.css (ns3-mmwave,
+ * scratch/mesh-sim/docs), so the two companion sites look the same. Class and
+ * token names keep that file's ms- prefix; keep the rules in step with it.
+ *
+ * Loaded last through HTML_EXTRA_STYLESHEET, so it overrides the vendored theme
+ * without editing it (theme/doxygen-awesome-css/ stays byte-identical to
+ * upstream; see theme/provenance.md). The look follows the Read the Docs Sphinx
+ * theme used by the FUSION documentation: a dark sidebar under a blue header,
+ * uppercase group captions, Lato body text with Roboto Slab headings and an
+ * 800 px reading column. Fonts load from Google Fonts in header.html and fall
+ * back to system fonts offline. Flat colours only: no gradients.
+ */
+
+/* ---------- Tokens ---------- */
+
+html {
+    --primary-color: #2980b9;
+    --primary-dark-color: #1f6391;
+    --primary-light-color: #6ab0de;
+    --on-primary-color: #ffffff;
+    --link-color: #2980b9;
+
+    --page-background-color: #fcfcfc;
+    --page-foreground-color: #404040;
+    --page-secondary-foreground-color: #6a6a6a;
+    --separator-color: #e1e4e5;
+
+    --side-nav-background: #343131;
+    --side-nav-foreground: #d9d9d9;
+    --side-nav-arrow-opacity: 1;
+    --side-nav-arrow-hover-opacity: 1;
+    --side-nav-fixed-width: 340px; /* must equal TREEVIEW_WIDTH in Doxyfile */
+    --top-height: 124px;
+    --searchbar-height: 38px;
+
+    --code-background: #ffffff;
+    --code-foreground: #e74c3c;
+    --fragment-background: #f8f8f8;
+    --fragment-foreground: #404040;
+    --tablehead-background: #fcfcfc;
+    --blockquote-background: #f3f6f6;
+    --toc-background: transparent;
+
+    --note-color: #e7f2fa;
+    --note-color-dark: #6ab0de;
+    --note-color-darker: #404040;
+    --warning-color: #ffedcc;
+    --warning-color-dark: #f0b37e;
+    --warning-color-darker: #404040;
+
+    --font-family: "Lato", "proxima-nova", "Helvetica Neue", Arial, sans-serif;
+    --ms-heading-font: "Roboto Slab", "ff-tisa-web-pro", Georgia, serif;
+    --font-family-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+    --border-radius-large: 4px;
+    --border-radius-medium: 3px;
+    --border-radius-small: 2px;
+    --box-shadow: none;
+
+    --page-font-size: 18px;
+    --navigation-font-size: 16.5px;
+    --content-line-height: 30px;
+    --content-maxwidth: 960px;
+    --title-font-size: 18px;
+    --code-font-size: 15px;
+    --toc-font-size: 15px;
+    --memname-font-size: 16px;
+    --memtitle-font-size: 20px;
+
+    --ms-header-background: #2980b9;
+    --ms-caption: #55a5d9;
+    --ms-nav-hover: #4e4a4a;
+    --ms-nav-current: #fcfcfc;
+    --ms-nav-current-text: #404040;
+    --ms-row-odd: #f3f6f6;
+    --ms-thumb: rgba(0, 0, 0, .2);
+}
+
+/* Dark values are declared twice, like the vendored theme: once for the OS
+ * preference and once for the toggle's explicit html.dark-mode class. */
+@media (prefers-color-scheme: dark) {
+    html:not(.light-mode) {
+        --primary-color: #5aa9e6;
+        --primary-dark-color: #8cc4ef;
+        --primary-light-color: #2f6d99;
+        --link-color: #5aa9e6;
+
+        --page-background-color: #1d1e20;
+        --page-foreground-color: #d4d7da;
+        --page-secondary-foreground-color: #9aa0a6;
+        --separator-color: #34373a;
+
+        --side-nav-background: #232222;
+        --code-background: #26282b;
+        --code-foreground: #ff8a7a;
+        --fragment-background: #232528;
+        --fragment-foreground: #d4d7da;
+        --tablehead-background: #1d1e20;
+        --blockquote-background: #232528;
+
+        --note-color: #1d2a33;
+        --note-color-dark: #2f6d99;
+        --note-color-darker: #d4d7da;
+        --warning-color: #33291c;
+        --warning-color-dark: #a8743f;
+        --warning-color-darker: #d4d7da;
+
+        --ms-header-background: #1f5f8b;
+        --ms-nav-hover: #3a3838;
+        --ms-nav-current: #1d1e20;
+        --ms-nav-current-text: #e6e6e6;
+        --ms-row-odd: #232528;
+        --ms-thumb: rgba(255, 255, 255, .18);
+    }
+}
+
+html.dark-mode {
+    --primary-color: #5aa9e6;
+    --primary-dark-color: #8cc4ef;
+    --primary-light-color: #2f6d99;
+    --link-color: #5aa9e6;
+
+    --page-background-color: #1d1e20;
+    --page-foreground-color: #d4d7da;
+    --page-secondary-foreground-color: #9aa0a6;
+    --separator-color: #34373a;
+
+    --side-nav-background: #232222;
+    --code-background: #26282b;
+    --code-foreground: #ff8a7a;
+    --fragment-background: #232528;
+    --fragment-foreground: #d4d7da;
+    --tablehead-background: #1d1e20;
+    --blockquote-background: #232528;
+
+    --note-color: #1d2a33;
+    --note-color-dark: #2f6d99;
+    --note-color-darker: #d4d7da;
+    --warning-color: #33291c;
+    --warning-color-dark: #a8743f;
+    --warning-color-darker: #d4d7da;
+
+    --ms-header-background: #1f5f8b;
+    --ms-nav-hover: #3a3838;
+    --ms-nav-current: #1d1e20;
+    --ms-nav-current-text: #e6e6e6;
+    --ms-row-odd: #232528;
+    --ms-thumb: rgba(255, 255, 255, .18);
+}
+
+body {
+    background: var(--page-background-color);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Sidebar header (project name and search) ---------- */
+
+#top {
+    background: var(--ms-header-background);
+}
+
+@media screen and (min-width: 768px) {
+    #top {
+        box-sizing: border-box;
+        border-right: none;
+    }
+    #side-nav {
+        box-sizing: border-box;
+        padding-right: 0;
+        border-right: none;
+    }
+    /* navtree.js sizes the tree from a stored width; fill the sidebar. */
+    #nav-tree {
+        width: 100% !important;
+        box-sizing: border-box;
+        border-right: none;
+    }
+}
+
+#titlearea {
+    padding: 14px 0 2px;
+    text-align: center;
+}
+
+#titlearea table {
+    margin: 0 auto;
+}
+
+#projectname {
+    font-family: var(--font-family);
+    font-size: 25px;
+    font-weight: 700;
+    color: #fcfcfc;
+}
+
+#projectname a {
+    color: #fcfcfc !important;
+    text-decoration: none;
+}
+
+#projectnumber {
+    margin-left: 6px;
+    font-size: 14px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, .75);
+}
+
+#MSearchBox {
+    border: 1px solid #2472a4;
+    border-radius: 50px;
+    box-shadow: none;
+    background: #ffffff;
+}
+
+#MSearchBox.MSearchBoxActive {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, .35);
+}
+
+#MSearchField {
+    color: #404040;
+    font-family: var(--font-family);
+}
+
+html.dark-mode #MSearchBox,
+html.dark-mode #MSearchField {
+    background: #ffffff;
+    color: #404040;
+}
+
+/* ---------- Sidebar tree ---------- */
+
+#side-nav,
+#nav-tree {
+    background: var(--side-nav-background);
+}
+
+#nav-tree {
+    padding: 4px 0 24px;
+}
+
+#nav-tree .label,
+#nav-tree a {
+    font-family: var(--font-family);
+    font-size: var(--navigation-font-size);
+}
+
+#nav-tree a {
+    color: var(--side-nav-foreground) !important;
+}
+
+/* Entries wrap onto a second line rather than being cut off with an
+ * ellipsis; the arrow (or indent spacer) stays aligned with the first line. */
+#nav-tree li {
+    white-space: normal;
+}
+
+#nav-tree .item {
+    display: flex;
+    align-items: flex-start;
+    height: auto;
+    min-height: var(--tree-item-height);
+    overflow: visible;
+    margin: 0;
+    padding: 0 12px 0 18px;
+    border-radius: 0;
+}
+
+#nav-tree .item > a:first-child,
+#nav-tree .item > span.arrow {
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 36px;
+}
+
+#nav-tree .item > a:first-child > span.arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+}
+
+#nav-tree .label {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 0 7px 5px;
+    line-height: 1.35;
+}
+
+#nav-tree .item:hover {
+    background: var(--ms-nav-hover);
+}
+
+/* The first tree row repeats the project name shown in the header. Hide it
+ * and pull every level left by one indent step to compensate. */
+#nav-tree-contents > ul > li > div.item {
+    display: none;
+}
+
+#nav-tree .item > :first-child {
+    margin-left: -16px;
+}
+
+/* Expand arrows: always visible, so it is clear which entries open. */
+#nav-tree .arrow {
+    opacity: 1;
+}
+
+#nav-tree span.arrowhead,
+.selected span.arrowhead {
+    border-color: #a3a3a3;
+    border-width: 0 1.5px 1.5px 0;
+}
+
+#nav-tree .item > a:hover span.arrowhead {
+    border-color: #ffffff;
+}
+
+/* Current page: a light bar with dark bold text, as in Read the Docs. */
+#nav-tree .selected {
+    background: var(--ms-nav-current) !important;
+}
+
+#nav-tree .selected::after {
+    display: none;
+}
+
+#nav-tree .selected a {
+    color: var(--ms-nav-current-text) !important;
+    font-weight: 700;
+}
+
+#nav-tree .selected span.arrowhead {
+    border-color: #808080;
+}
+
+/* Group captions inserted by header.html above top-level tree entries. */
+#nav-tree li.ms-caption {
+    margin: 18px 0 0;
+    padding: 0 22px;
+    height: 36px;
+    line-height: 36px;
+    font-family: var(--font-family);
+    font-size: 14.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--ms-caption);
+    white-space: nowrap;
+}
+
+/* Sync stays on (header.html clears any stored "off" state), so its toggle
+ * is not needed. */
+#nav-sync {
+    display: none !important;
+}
+
+/* ---------- Text size control ---------- */
+
+/* header.html sets CSS zoom on the page from the saved text size and mirrors
+ * it in --ms-zoom. Zoom also scales viewport units, so full-height panes
+ * divide 100vh by it to keep filling the window. The sidebar leaves room at
+ * the bottom for the control bar. */
+html {
+    --ms-zoom: 1;
+    --ms-text-size-bar: 46px;
+}
+
+@media screen and (min-width: 768px) {
+    #side-nav {
+        height: calc(100vh / var(--ms-zoom) - var(--top-height)) !important;
+    }
+
+    #nav-tree {
+        height: calc(100vh / var(--ms-zoom) - var(--top-height) - var(--ms-text-size-bar)) !important;
+    }
+
+    #doc-content {
+        height: calc(100vh / var(--ms-zoom)) !important;
+    }
+}
+
+#ms-text-size {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--ms-text-size-bar);
+    padding: 0 16px 0 22px;
+    box-sizing: border-box;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    background: var(--side-nav-background);
+    font-family: var(--font-family);
+}
+
+#ms-text-size .ms-ts-label {
+    flex: 1;
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--ms-caption);
+}
+
+#ms-text-size button {
+    min-width: 34px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: var(--border-radius-medium);
+    background: transparent;
+    color: var(--side-nav-foreground);
+    font-family: var(--font-family);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+#ms-text-size button:hover {
+    background: var(--ms-nav-hover);
+}
+
+#ms-text-size button.ms-ts-value {
+    min-width: 54px;
+    border-color: transparent;
+    font-weight: 400;
+}
+
+@media screen and (max-width: 767px) {
+    #ms-text-size {
+        display: none;
+    }
+}
+
+/* ---------- Scrollbars ---------- */
+
+/* The sidebar scrolls without a visible scrollbar, as in Read the Docs, so
+ * the current-page bar reaches the sidebar edge. */
+#nav-tree {
+    scrollbar-width: none;
+}
+
+#nav-tree::-webkit-scrollbar {
+    display: none;
+}
+
+#doc-content {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ms-thumb) transparent;
+}
+
+#doc-content::-webkit-scrollbar {
+    width: 10px;
+}
+
+#doc-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#doc-content::-webkit-scrollbar-thumb {
+    background: var(--ms-thumb);
+    border: 3px solid transparent;
+    border-radius: 10px;
+    background-clip: content-box;
+}
+
+/* ---------- Footer bar ---------- */
+
+/* Doxygen's bottom bar (breadcrumb and "Generated by doxygen") is hidden;
+ * navtree.js still needs #nav-path in the page, so it stays in the DOM. */
+#nav-path {
+    display: none !important;
+}
+
+/* The page then uses the full window height; see "Text size control" for the
+ * #doc-content height rule. */
+
+/* ---------- Content ---------- */
+
+#doc-content {
+    background: var(--page-background-color);
+}
+
+div.header {
+    border-bottom: none;
+}
+
+div.header .title,
+div.contents h1,
+div.contents h2,
+div.contents h3,
+div.contents h4 {
+    font-family: var(--ms-heading-font);
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--page-foreground-color);
+}
+
+div.header .title {
+    font-size: 34px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+/* API pages (class, namespace, file) carry long qualified names; their
+ * titles are set a step smaller. They are the pages with Doxygen's
+ * generated section headings (h2.groupheader). */
+body:has(h2.groupheader) div.header .title {
+    font-size: 27px;
+}
+
+/* One heading scale on every page. Doxygen emits a page's top section level
+ * as h1 when the page title is a Markdown "#" heading, but as h2 on @page
+ * pages, so whichever level comes first gets the same size. */
+div.contents h1,
+div.contents h2 {
+    font-size: 26px;
+    line-height: 1.3;
+    margin: 1.6em 0 .6em;
+}
+
+div.contents h3 {
+    font-size: 21px;
+    line-height: 1.35;
+    margin: 1.4em 0 .5em;
+}
+
+div.contents h4 {
+    font-size: 18px;
+    margin: 1.2em 0 .4em;
+}
+
+div.contents:has(h1) h2 { font-size: 21px; }
+div.contents:has(h1) h3 { font-size: 18px; }
+
+/* API pages: section and member headings. */
+div.contents h2.groupheader {
+    font-size: 22px;
+    margin-top: 1.4em;
+}
+
+h2.memtitle {
+    font-family: var(--font-family-monospace);
+    font-size: 17px;
+    font-weight: 600;
+}
+
+/* Dense content (tables, lists of classes and files, member summaries) is
+ * set a step below body text so it fits the column. */
+table.markdownTable,
+table.doxtable,
+table.fieldtable,
+table.directory,
+table.memberdecls,
+table.memname,
+div.memdoc {
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+th.markdownTableHeadLeft,
+th.markdownTableHeadRight,
+th.markdownTableHeadCenter,
+th.markdownTableHeadNone,
+table.doxtable th {
+    font-size: 16px !important;
+}
+
+/* Class and file lists: long qualified names wrap inside a fixed share of
+ * the row instead of pushing the descriptions off the page. */
+table.directory td.entry {
+    width: 50%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+table.directory td.desc {
+    width: 50%;
+}
+
+/* Member signatures: long parameter lists wrap; anything still too wide
+ * scrolls inside its box rather than past the column. */
+div.memproto {
+    overflow-x: auto;
+}
+
+table.memname td.paramtype,
+table.memname td.paramname {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Long identifiers in table cells wrap instead of widening the table. */
+table.markdownTable td code,
+table.doxtable td code {
+    font-size: 85%;
+    overflow-wrap: anywhere;
+}
+
+div.contents hr {
+    height: 0;
+    margin: 28px 0;
+    border: 0;
+    border-top: 1px solid var(--separator-color);
+}
+
+div.contents a {
+    color: var(--link-color);
+}
+
+div.contents a:hover {
+    color: #3091d1;
+    text-decoration: none;
+}
+
+/* Inline code: small red monospace on white with a hairline, as in RTD. */
+div.contents p code,
+div.contents li code,
+div.contents td code,
+div.contents dd code {
+    padding: 0 5px;
+    border: 1px solid var(--separator-color);
+    border-radius: 0;
+    background: var(--code-background);
+    color: var(--code-foreground);
+    font-size: 80%;
+    white-space: normal;
+}
+
+div.contents a code,
+div.contents a.el code {
+    color: var(--link-color);
+}
+
+/* Code blocks: flat grey panel with a hairline. */
+div.fragment,
+pre.fragment {
+    border: 1px solid var(--separator-color);
+    border-radius: 0;
+    background: var(--fragment-background);
+}
+
+/* Tables: hairline grid, bold header, striped rows. */
+table.markdownTable tbody,
+table.doxtable tbody,
+table.fieldtable {
+    border-radius: 0;
+}
+
+th.markdownTableHeadLeft,
+th.markdownTableHeadRight,
+th.markdownTableHeadCenter,
+th.markdownTableHeadNone,
+table.doxtable th {
+    border-bottom: 2px solid var(--separator-color) !important;
+    font-weight: 700;
+    border-radius: 0 !important;
+}
+
+table.markdownTable td,
+table.markdownTable th {
+    padding: 8px 14px;
+}
+
+/* Markdown tables need a header row; hide it when every cell is empty
+ * (a two-column "label | text" table written as `| | |`). */
+tr.markdownTableHead:not(:has(th:not(:empty))) {
+    display: none;
+}
+
+tr.markdownTableRowOdd td {
+    background: var(--ms-row-odd);
+}
+
+/* Notes and warnings: coloured title bar over a tinted body. */
+dl.note,
+dl.remark,
+dl.warning,
+dl.attention {
+    padding: 12px;
+    border-left: none;
+    border-radius: 0;
+}
+
+dl.note dt,
+dl.remark dt,
+dl.warning dt,
+dl.attention dt {
+    display: block;
+    margin: -12px -12px 10px;
+    padding: 6px 12px;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+dl.note dt,
+dl.remark dt {
+    background: var(--note-color-dark);
+}
+
+dl.warning dt,
+dl.attention dt {
+    background: var(--warning-color-dark);
+}
+
+dl.note dd,
+dl.remark dd,
+dl.warning dd,
+dl.attention dd {
+    margin: 0;
+}
+
+div.toc {
+    border-left: 1px solid var(--separator-color);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+div.contents div.toc h3 {
+    font-family: var(--font-family);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: 12.5px;
+    color: var(--page-secondary-foreground-color);
+}
+
+/* Below 1400 px the side table of contents would squeeze the text into a
+ * narrow column, so it becomes a collapsible "On this page" box at the top
+ * (the theme's narrow-screen behaviour, extended to wider windows). */
+@media screen and (max-width: 1399px) {
+    #doc-content > div > div.contents,
+    .PageDoc > div.contents {
+        display: block;
+    }
+
+    div.contents .toc {
+        float: none;
+        width: auto;
+        min-width: 0;
+        max-height: 45vh;
+        margin: 0 0 24px 0;
+        position: relative;
+        top: 0;
+        padding: 0 16px;
+        border: 1px solid var(--separator-color);
+        border-radius: var(--border-radius-medium);
+        background-color: var(--ms-row-odd);
+    }
+
+    div.contents .toc.interactive {
+        max-height: calc(14px + 2 * 14px);
+        overflow: hidden;
+    }
+
+    div.contents .toc.interactive.open {
+        max-height: 45vh;
+        overflow: auto;
+    }
+
+    div.contents .toc > h3 {
+        cursor: pointer;
+        margin: 0;
+        padding: 14px 0;
+    }
+
+    div.contents .toc.interactive > h3::before {
+        content: "";
+        display: inline-block;
+        width: 0;
+        height: 0;
+        margin: 0 8px 2px 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 5px solid var(--page-secondary-foreground-color);
+        transform: rotate(-90deg);
+        transition: transform var(--animation-duration) ease-out;
+    }
+
+    div.contents .toc.interactive.open > h3::before {
+        transform: rotate(0deg);
+    }
+
+    div.contents .toc ul {
+        padding-bottom: 12px;
+    }
+}
+
+/* ---------- Diagrams ---------- */
+
+/* Graphs scroll sideways only when they really are wider than the column
+ * (the theme always shows a scrollbar). */
+.dotgraph {
+    overflow-x: auto;
+}
+
+/* Authored diagrams (\dotfile) are swapped from iframes to images by
+ * header.html so they scale down to the column width. */
+img.ms-dot {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 8px auto 4px;
+}
+
+div.image {
+    margin: 16px 0 8px;
+}
+
+div.image img {
+    height: auto;
+}
+
+div.image .caption,
+.dotgraph .caption {
+    font-size: 14px;
+    color: var(--page-secondary-foreground-color);
+}
+
+/* ---------- Landing page (index.md) ---------- */
+
+/* Bold term with an indented description, like an RST definition list. */
+dl.ms-terms {
+    margin: 12px 0 0;
+}
+
+dl.ms-terms dt {
+    margin-top: 14px;
+    font-weight: 700;
+}
+
+dl.ms-terms dd {
+    margin: 4px 0 0 24px;
+}
+
+.ms-tagline {
+    font-weight: 700;
+}
+
+.ms-figure {
+    margin: 12px 0 8px;
+    text-align: center;
+}

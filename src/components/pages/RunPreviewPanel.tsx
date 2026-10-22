@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { RunEntry } from '../../lib/assembleRuns'
 import { deliveryRatio, sinrSeries, type RunPreview } from '../../lib/runPreview'
 import { MOTION } from '../../styles/motion'
+import { Loading } from '../ui/Spinner'
 
 // Each run is read once per session, however often its card mounts
 const cache = new Map<string, Promise<RunPreview | null>>()
@@ -46,7 +47,12 @@ export function RunPreviewPanel({ run }: { run: RunEntry | undefined }) {
   }, [run])
 
   // Reserve the final height so cards never jump when the numbers arrive
-  if (!preview) return <div className="h-14" aria-hidden="true" />
+  if (!preview)
+    return (
+      <div className="h-14 flex items-center">
+        <Loading label="Reading run" size="sm" />
+      </div>
+    )
   return (
     <div className={`h-14 ${MOTION.enterFade}`}>
       <div className="grid grid-cols-2 gap-4">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   hasFSA,
   loadDirectoryHandle,
@@ -21,8 +21,16 @@ import {
 import type { ExperimentRoot } from '../lib/experimentIndex'
 import { discoverExperiments } from '../lib/experimentIndex'
 import { discoverTrainingRuns } from '../lib/trainingRun'
+import { missionScenarios, isMissionInternal } from '../lib/missionCampaignIndex'
 import type { BaselineRun } from '../lib/baselineRuns'
 import { attachBaselineMeta, discoverBaselineRuns } from '../lib/baselineRuns'
+import {
+  filterCatalog,
+  folderTree,
+  isFolderIncluded,
+  loadIncluded,
+  saveIncluded,
+} from '../lib/folderFilter'
 
 const BASELINE_DISCOVERY_ERROR = 'Baseline run manifests could not be listed'
 
@@ -44,39 +52,83 @@ async function discoverBaselines(catalog: ResultCatalog | null): Promise<Baselin
  */
 export function useWorkspace() {
   const dirInputRef = useRef<HTMLInputElement>(null)
-  const [runs, setRuns] = useState<RunEntry[]>([])
+  const sourceRef = useRef<
+    | { kind: 'dev' }
+    | { kind: 'handle'; handle: FileSystemDirectoryHandle }
+    | { kind: 'files' }
+    | null
+  >(null)
+  // Everything in the open folder; the pages see only the chosen subfolders (below)
+  const [allRuns, setRuns] = useState<RunEntry[]>([])
   const [dirName, setDirName] = useState<string | null>(null)
   const [loadingDir, setLoadingDir] = useState(false)
-  const [catalog, setCatalog] = useState<ResultCatalog | null>(null)
-  const [experimentRoots, setExperimentRoots] = useState<ExperimentRoot[]>([])
-  const [trainingRoots, setTrainingRoots] = useState<string[]>([])
-  const [allTrainingRoots, setAllTrainingRoots] = useState<string[]>([])
-  const [baselineRuns, setBaselineRuns] = useState<BaselineRun[]>([])
-  const [unplayableBaselines, setUnplayableBaselines] = useState<BaselineRun[]>([])
+  const [fullCatalog, setCatalog] = useState<ResultCatalog | null>(null)
+  const [allBaselineRuns, setBaselineRuns] = useState<BaselineRun[]>([])
+  const [allUnplayable, setUnplayableBaselines] = useState<BaselineRun[]>([])
+  /** Chosen subfolders of the open folder; none until the first choice is made */
+  const [includedFolders, setIncluded] = useState<string[]>([])
   const [baselineDiscoveryError, setBaselineDiscoveryError] = useState<string | null>(null)
   // Bumped on every source change; async results from an older source are dropped
   const sourceToken = useRef(0)
 
-  // Experiment folders are indexed from path names only; no file is read here
-  const applyCatalog = useCallback((next: ResultCatalog | null) => {
-    setCatalog(next)
-    const roots = next ? discoverExperiments(next) : []
-    setExperimentRoots(roots)
-    // Training inside an experiment plan is reached through that experiment
-    const plans = roots.filter((r) => r.kind === 'plan').map((r) => r.root)
-    const discovered = next ? discoverTrainingRuns(next) : []
-    setAllTrainingRoots(discovered)
-    setTrainingRoots(
-      next
-        ? discovered.filter((t) => !plans.some((p) => p === '' || t === p || t.startsWith(p + '/')))
-        : []
-    )
-  }, [])
+  const applyCatalog = useCallback((next: ResultCatalog | null) => setCatalog(next), [])
 
   const applyRuns = useCallback((name: string, found: RunEntry[]) => {
     setDirName(name)
     setRuns(found)
+    setIncluded(loadIncluded(name) ?? [])
   }, [])
+
+  const folders = useMemo(() => (fullCatalog ? folderTree(fullCatalog.paths()) : []), [fullCatalog])
+
+  const setIncludedFolders = useCallback(
+    (next: string[]) => {
+      setIncluded(next)
+      if (dirName !== null) saveIncluded(dirName, next)
+    },
+    [dirName]
+  )
+
+  const catalog = useMemo(
+    () => (fullCatalog ? filterCatalog(fullCatalog, includedFolders) : null),
+    [fullCatalog, includedFolders]
+  )
+  const runs = useMemo(
+    () => allRuns.filter((r) => isFolderIncluded(r.runDir, includedFolders)),
+    [allRuns, includedFolders]
+  )
+  const baselineRuns = useMemo(
+    () => allBaselineRuns.filter((b) => isFolderIncluded(b.runDir, includedFolders)),
+    [allBaselineRuns, includedFolders]
+  )
+  const unplayableBaselines = useMemo(
+    () => allUnplayable.filter((b) => isFolderIncluded(b.runDir, includedFolders)),
+    [allUnplayable, includedFolders]
+  )
+
+  // Experiment folders are indexed from path names only; no file is read here
+  const experimentRoots = useMemo<ExperimentRoot[]>(
+    () => (catalog ? discoverExperiments(catalog) : []),
+    [catalog]
+  )
+  // Every training run, shown or not, so an experiment can still link to its training
+  const allTrainingRoots = useMemo(
+    () => (fullCatalog ? discoverTrainingRuns(fullCatalog) : []),
+    [fullCatalog]
+  )
+  const trainingRoots = useMemo(() => {
+    if (!catalog) return []
+    // Training inside an experiment plan is reached through that experiment
+    const plans = experimentRoots
+      .filter((r) => r.kind === 'plan' || r.kind === 'campaign')
+      .map((r) => r.root)
+    const missions = missionScenarios(catalog.paths())
+    return discoverTrainingRuns(catalog).filter(
+      (t) =>
+        !isMissionInternal(t, missions) &&
+        !plans.some((p) => p === '' || t === p || t.startsWith(p + '/'))
+    )
+  }, [catalog, experimentRoots])
 
   /**
    * Starts a new source: older async results (and their loading flag) are ignored and
@@ -110,6 +162,7 @@ export function useWorkspace() {
         const next = await catalogFromDirectoryHandle(handle).catch(() => null)
         const discovery = await discoverBaselines(next)
         if (token !== sourceToken.current) return
+        sourceRef.current = { kind: 'handle', handle }
         applyRuns(handle.name, found)
         applyCatalog(next)
         applyBaselines(found, discovery)
@@ -140,6 +193,7 @@ export function useWorkspace() {
           devRoots.length > 0 ||
           discovery.baselines.length > 0
         ) {
+          sourceRef.current = { kind: 'dev' }
           applyRuns('outputs', devRuns ?? [])
           applyCatalog(devCatalog)
           applyBaselines(devRuns ?? [], discovery)
@@ -186,6 +240,7 @@ export function useWorkspace() {
       if (!files || files.length === 0) return
       const token = beginSource()
       const found = parseRunsFromFileList(files)
+      sourceRef.current = { kind: 'files' }
       const next = catalogFromFileList(files)
       // Runs are usable at once; baseline metadata follows when its manifests are read
       applyRuns(files[0].webkitRelativePath.split('/')[0], found)
@@ -196,6 +251,30 @@ export function useWorkspace() {
     },
     [applyRuns, applyCatalog, applyBaselines, beginSource]
   )
+
+  const refresh = useCallback(async () => {
+    const source = sourceRef.current
+    if (source?.kind === 'handle') {
+      await openWithFSA(source.handle)
+      return
+    }
+    if (source?.kind !== 'dev') {
+      await openFolder()
+      return
+    }
+    const token = beginSource()
+    setLoadingDir(true)
+    try {
+      const [found, next] = await Promise.all([fetchRunsFromDevServer(), catalogFromDevServer()])
+      const discovery = await discoverBaselines(next)
+      if (token !== sourceToken.current) return
+      applyRuns('outputs', found ?? [])
+      applyCatalog(next)
+      applyBaselines(found ?? [], discovery)
+    } finally {
+      if (token === sourceToken.current) setLoadingDir(false)
+    }
+  }, [openWithFSA, openFolder, beginSource, applyRuns, applyCatalog, applyBaselines])
 
   const forgetFolder = useCallback(async () => {
     beginSource()
@@ -211,6 +290,11 @@ export function useWorkspace() {
     dirName,
     runs,
     catalog,
+    /** The unfiltered catalog, for reading an opened experiment's cross-folder references */
+    fullCatalog,
+    folders,
+    includedFolders,
+    setIncludedFolders,
     experimentRoots,
     baselineRuns,
     unplayableBaselines,
@@ -220,6 +304,7 @@ export function useWorkspace() {
     loadingDir,
     canForget: hasFSA() && dirName !== null,
     openFolder,
+    refresh,
     forgetFolder,
   }
 }

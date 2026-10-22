@@ -119,3 +119,27 @@ test('groupProjects puts sibling folders that share a name stem together', () =>
     ]
   )
 })
+
+test('versioned campaigns have their own project, with Main and diagnostics organized below it', () => {
+  const projects = groupProjects(
+    groupExperimentRoots(
+      [
+        'custom/10-09/local-fast/main/small-hold',
+        'custom/10-09-2/main/small-hold',
+        'custom/10-09-2/main/diagnostics/standard/small-hold',
+        'custom/10-09-3/main/small-hold',
+      ].map((root) => ({ root }))
+    ),
+    []
+  )
+  assert.deepEqual(
+    projects.map((p) => p.title),
+    ['10-09-3', '10-09-2', 'Local fast']
+  )
+  assert.deepEqual(
+    projects[1].experiments.map((e) => e.short),
+    ['Main · Diagnostics · Standard', 'Main']
+  )
+  assert.equal(projects[0].date, 'Oct 9')
+  assert.equal(projects[0].experiments[0].short, 'Main')
+})

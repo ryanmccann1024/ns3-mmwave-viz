@@ -46,6 +46,8 @@ export interface TrainingRun {
   endedAt: string | null
   totalTimesteps: number | null
   bestMeanReward: number | null
+  /** which model the run saved for use: a selected best checkpoint, else only the final one */
+  savedModel: 'best' | 'final' | null
   hyperparameters: Rec | null
   rewardComponents: string[]
   rewardWeights: number[]
@@ -104,6 +106,7 @@ function episodeFilePaths(catalog: ResultCatalog, dir: string): EpisodeFilePaths
     rlEpisode: `${dir}/rl_episode.json`,
     nodesJson: under.find((p) => p.endsWith('/inputs/nodes.json')) ?? null,
     jammersJson: under.find((p) => p.endsWith('/inputs/jammers.json')) ?? null,
+    runIni: under.find((p) => p.endsWith('/inputs/run.ini')) ?? null,
     buildings: buildings.find((p) => p.endsWith('/buildings.json')) ?? buildings[0] ?? null,
   }
 }
@@ -125,6 +128,12 @@ export async function loadTrainingRun(catalog: ResultCatalog, root: string): Pro
   const selection = rec(manifest.selection)
   const contract = rec(manifest.contract)
   const hyper = isRec(manifest.hyperparameters) ? manifest.hyperparameters : null
+  const identity = rec(manifest.scenario_identity)
+  const scenarioHashes = {
+    nodesJson: typeof identity.nodes_json_sha256 === 'string' ? identity.nodes_json_sha256 : null,
+    buildings:
+      typeof identity.buildings_json_sha256 === 'string' ? identity.buildings_json_sha256 : null,
+  }
 
   const prefix = root === '' ? '' : root + '/'
   const recordPaths = catalog
@@ -142,6 +151,7 @@ export async function loadTrainingRun(catalog: ResultCatalog, root: string): Pro
         const decisions = num(d.decisions)
         const status = str(d.status)
         const files = episodeFilePaths(catalog, dir)
+        files.inputHashes = scenarioHashes
         const components: Record<string, number> = {}
         for (const [k, v] of Object.entries(rec(d.reward_components_sum))) {
           if (typeof v === 'number') components[k] = v
@@ -192,6 +202,12 @@ export async function loadTrainingRun(catalog: ResultCatalog, root: string): Pro
     endedAt: str(manifest.ended_at),
     totalTimesteps: num(hyper?.total_timesteps),
     bestMeanReward: num(manifest.best_mean_reward),
+    savedModel:
+      typeof manifest.best_model_path === 'string'
+        ? 'best'
+        : typeof manifest.model_path === 'string'
+          ? 'final'
+          : null,
     hyperparameters: hyper,
     rewardComponents: Array.isArray(selection.reward_components)
       ? selection.reward_components.filter((c): c is string => typeof c === 'string')

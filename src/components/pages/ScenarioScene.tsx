@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { RunEntry } from '../../lib/assembleRuns'
 import { parseTracks, type Point3 } from '../../lib/trackPreview'
 import { MOTION } from '../../styles/motion'
+import { Loading } from '../ui/Spinner'
 
 const W = 480
 const H = 192
@@ -42,7 +43,13 @@ export function ScenarioScene({ run }: { run: RunEntry | undefined }) {
   }, [run])
 
   const frame = 'w-full h-48 rounded-xl bg-white/70 border border-hairline'
-  if (!tracks || tracks.length === 0) return <div className={frame} aria-hidden="true" />
+  if (!tracks)
+    return (
+      <div className={`${frame} flex items-center justify-center`}>
+        <Loading label="Reading positions" size="sm" />
+      </div>
+    )
+  if (tracks.length === 0) return <div className={frame} aria-hidden="true" />
 
   // Ground rectangle around every point, padded so nodes never sit on the edge
   const all = tracks.flat()

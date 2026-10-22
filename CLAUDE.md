@@ -31,6 +31,7 @@ Standalone baseline runs live at `outputs/YYYY-MM/DD/HH-MM-SS-baseline[-N]/basel
 - `components/ui/` — Reusable UI primitives (Button, Badge, Row, StatItem, Terminal)
 - `components/canvas/` — Three.js scene components (Scene, NodeObject, LinkObject, BuildingObject, SceneEnvironment)
 - `styles/tokens.ts` — Single source of truth for colors, sizes, labels, Tailwind class mappings
+- `lib/jammerField.ts` (+ `.worker.ts` pool) + `components/canvas/JammerVolumeLayer.tsx` (3D ray-marched shells at 0/10/20/30 dB, rays stop at buildings) / `JammerFieldLayer.tsx` (slice) — Jamming map: ports the simulator's JammerModel gates and ns-3 3GPP UMa/UMi/RMa path loss with building LOS (no shadow fading); channel settings come from the archived `inputs/run.ini` (`lib/runIni.ts`). Keep it in step with `mesh-sim/src/jammer/` — tests pin values from a shadowing-off sim run
 - `components/decisions/` + `lib/decisionExplorer.ts`/`nodeIdentity.ts`/`frameSeek.ts` — Decisions tab: integer-keyed `steps.jsonl` index, exact n−1 input join, derived applied action, checked ordinal node↔CSV mapping, interval-checked frame seek
 
 ## Key Patterns
@@ -39,3 +40,19 @@ Standalone baseline runs live at `outputs/YYYY-MM/DD/HH-MM-SS-baseline[-N]/basel
 - **Coordinates**: Three.js is Y-up; `coordinates.ts` maps sim coords (Z=altitude) to Three.js (Y=altitude). All coordinate functions accept a `dim` param (1/2/3) for multi-view support.
 - **Motion**: shared timing/easing tokens in `tailwind.config.js` and class strings in `styles/motion.ts` (`MOTION.colors/surface/fade/lift/enter/enterFade`); `transition-all` is banned (`tests/motionPolicy.test.ts`); `prefers-reduced-motion` and `:focus-visible` live in `index.css`.
 - **Styling**: Tailwind utility classes everywhere. Design tokens in `styles/tokens.ts`. Use the `Button` component (variants: primary, ghost, icon-round, link) for interactive buttons.
+
+## Docs
+
+- Documentation for this project follows the [shared MeshSim documentation standard](../ns3-mmwave/scratch/mesh-sim/docs/documentation-standard.md). This relative path
+  assumes `ns3-mmwave` and `ns3-mmwave-viz` are sibling checkouts in the same parent
+  directory; it is a source link, not a published-site URL.
+- This project's guides own loading, derived displays, coordinate conventions and
+  missing-data behavior. The simulator owns the contracts of the artifacts it produces;
+  link to its docs rather than restating field definitions here.
+- Visualizer documentation is authored Markdown with direct relative links into `src/`.
+  Do not assume TypeScript Doxygen extraction works. Use the owning project's
+  verified tooling recipe; this section does not invent a generation command.
+- Documentation edits stay within the active task's scope. Verification and
+  command execution follow the human's task direction and this project's
+  documented commands and rules.
+- See [AGENTS.md](AGENTS.md) for the scoped task requirements.

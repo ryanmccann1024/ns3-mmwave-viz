@@ -7,33 +7,38 @@ import { folderLabel } from '../../lib/format'
 import { useTrainingRun } from '../../hooks/useRlData'
 import { experimentLabel } from '../../lib/rlLabels'
 import { MOTION } from '../../styles/motion'
+import { missionSummary, objectiveValue } from '../../lib/missionObjective'
+import { Spinner } from '../ui/Spinner'
 
 interface ScenarioSummary {
+  mission: ReturnType<typeof missionSummary>
   delivery: PolicyDelivery[]
   /** how many reward variants were evaluated */
   variants: number
 }
 
-// Each experiment is read once per session, however often its card mounts
-const cache = new Map<string, Promise<ScenarioSummary | null>>()
+// Reuse summaries within one folder scan; refreshing creates a new catalog.
+const cache = new WeakMap<ResultCatalog, Map<string, Promise<ScenarioSummary | null>>>()
 
 function loadSummary(catalog: ResultCatalog, root: string): Promise<ScenarioSummary | null> {
-  const key = `${catalog.name}:${root}`
-  let pending = cache.get(key)
+  let summaries = cache.get(catalog)
+  if (!summaries) {
+    summaries = new Map()
+    cache.set(catalog, summaries)
+  }
+  let pending = summaries.get(root)
   if (!pending) {
     pending = loadExperiment(catalog, root)
       .then((experiment) => ({
+        mission: missionSummary(experiment),
         delivery: policyDelivery(experiment),
         variants: new Set(experiment.evaluations.map((e) => e.label)).size,
       }))
       .catch(() => null)
-    cache.set(key, pending)
+    summaries.set(root, pending)
   }
   return pending
 }
-
-const loadDelivery = (catalog: ResultCatalog, root: string) =>
-  loadSummary(catalog, root).then((s) => s?.delivery ?? null)
 
 function useSummary(catalog: ResultCatalog | null, root: string) {
   const [summary, setSummary] = useState<ScenarioSummary | null | undefined>(undefined)
@@ -64,8 +69,9 @@ export function ScenarioCard({
   const settled = summary !== undefined
   const model = summary?.delivery.find((r) => r.policy === 'model')
   const baseline = summary?.delivery.find((r) => r.policy !== 'model')
-  const show = (v: number | undefined) => (!settled ? '\u00a0' : pctOf(v ?? null))
+  const show = (v: number | undefined) => (settled ? pctOf(v ?? null) : null)
   const variants = summary?.variants ?? null
+  const mission = summary?.mission
   return (
     <button
       type="button"
@@ -76,25 +82,99 @@ export function ScenarioCard({
         {experimentLabel(folderLabel(root.root).name || 'This experiment')}
       </span>
       <div className="w-full grid grid-cols-3 gap-4">
-        <Figure value={show(model?.delivery)} label="Model" />
-        <Figure value={show(baseline?.delivery)} label="Best baseline" />
         <Figure
-          value={!settled ? '\u00a0' : variants === null ? '–' : String(variants)}
-          label={variants === 1 ? 'Reward variant' : 'Reward variants'}
+          value={
+            mission
+              ? objectiveValue(mission.model?.value, mission.objective)
+              : show(model?.delivery)
+          }
+          label="Model"
+        />
+        <Figure
+          value={
+            mission
+              ? objectiveValue(mission.baseline?.value, mission.objective)
+              : show(baseline?.delivery)
+          }
+          label="Best baseline"
+        />
+        <Figure
+          value={!settled ? null : variants === null ? '–' : String(variants)}
+          label={variants === 1 ? 'Variant' : 'Variants'}
         />
       </div>
     </button>
   )
 }
 
-const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
 const pctOf = (x: number | null) => (x === null ? '–' : `${Math.round(x * 100)}%`)
 
-function Figure({ value, label }: { value: string; label: string }) {
+/** The model's headline result in one scenario, as the scenario card shows it */
+function modelFigure(summary: ScenarioSummary | null): string {
+  if (summary?.mission)
+    return objectiveValue(summary.mission.model?.value, summary.mission.objective)
+  return pctOf(summary?.delivery.find((r) => r.policy === 'model')?.delivery ?? null)
+}
+
+/** A scenario run at several team sizes: the model's result at each size */
+export function ScenarioFamilyCard({
+  catalog,
+  title,
+  sizes,
+  onOpen,
+}: {
+  catalog: ResultCatalog | null
+  title: string
+  sizes: { peers: number | null; root: ExperimentRoot }[]
+  onOpen: () => void
+}) {
+  const [figures, setFigures] = useState<string[]>()
+  const rootsKey = sizes.map((s) => s.root.root).join('|')
+  useEffect(() => {
+    if (!catalog) return
+    let cancelled = false
+    Promise.all(sizes.map((s) => loadSummary(catalog, s.root.root))).then((all) => {
+      if (!cancelled) setFigures(all.map(modelFigure))
+    })
+    return () => {
+      cancelled = true
+    }
+    // rootsKey stands in for sizes, which is rebuilt on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, rootsKey])
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`glass p-6 sm:p-7 flex flex-col gap-6 text-left min-w-0 hover:bg-white/80 ${MOTION.surface}`}
+    >
+      <span className="w-full text-xl font-semibold tracking-tight text-ink-title truncate">
+        {title}
+      </span>
+      <div
+        className="w-full grid gap-4"
+        style={{ gridTemplateColumns: `repeat(${Math.max(3, sizes.length)}, minmax(0, 1fr))` }}
+      >
+        {sizes.map((s, i) => (
+          <Figure
+            key={s.root.root}
+            value={figures ? figures[i] : null}
+            label={`${s.peers} peers`}
+          />
+        ))}
+      </div>
+    </button>
+  )
+}
+
+/** A headline number; `null` means it is still being read, shown as a spinner at the same height */
+function Figure({ value, label }: { value: string | null; label: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-4xl font-semibold tabular-nums tracking-tight text-ink-title">
-        {value}
+      <div className="h-10 flex items-center text-4xl font-semibold tabular-nums tracking-tight text-ink-title">
+        {/* The number fades in where the spinner was, so it never pops */}
+        {value === null ? <Spinner size="sm" /> : <span className={MOTION.page}>{value}</span>}
       </div>
       <div className="mt-1 text-base font-medium text-ink-2">{label}</div>
     </div>
@@ -116,22 +196,18 @@ export function ExperimentCard({
   roots: ExperimentRoot[]
   onOpen: () => void
 }) {
-  const [summary, setSummary] = useState<{ model: number | null; baseline: number | null }>()
+  const [summary, setSummary] = useState<{ cases: number; variants: number }>()
   const rootsKey = roots.map((r) => r.root).join('|')
   useEffect(() => {
     if (!catalog) return
     let cancelled = false
-    Promise.all(roots.map((r) => loadDelivery(catalog, r.root))).then((all) => {
+    Promise.all(roots.map((r) => loadSummary(catalog, r.root))).then((all) => {
       if (cancelled) return
-      const model: number[] = []
-      const baseline: number[] = []
-      for (const rows of all) {
-        const m = rows?.find((r) => r.policy === 'model')
-        const b = rows?.find((r) => r.policy !== 'model')
-        if (m) model.push(m.delivery)
-        if (b) baseline.push(b.delivery)
-      }
-      setSummary({ model: mean(model), baseline: mean(baseline) })
+      setSummary({
+        cases: all.filter((s) => s?.mission?.model || s?.delivery.some((r) => r.policy === 'model'))
+          .length,
+        variants: all.reduce((sum, s) => sum + (s?.variants ?? 0), 0),
+      })
     })
     return () => {
       cancelled = true
@@ -156,8 +232,8 @@ export function ExperimentCard({
           value={String(roots.length)}
           label={roots.length === 1 ? 'Scenario' : 'Scenarios'}
         />
-        <Figure value={summary ? pctOf(summary.model) : '\u00a0'} label="Model" />
-        <Figure value={summary ? pctOf(summary.baseline) : '\u00a0'} label="Best baseline" />
+        <Figure value={summary ? String(summary.cases) : null} label="With results" />
+        <Figure value={summary ? String(summary.variants) : null} label="Variants" />
       </div>
     </button>
   )
@@ -187,7 +263,7 @@ export function TrainingCard({
   const loaded = useTrainingRun(catalog, root)
   const run = loaded?.state === 'ready' ? loaded.value : null
   const settled = loaded?.state === 'ready' || loaded?.state === 'error'
-  const show = (v: string | null | undefined) => (settled ? (v ?? '–') : ' ')
+  const show = (v: string | null | undefined) => (settled ? (v ?? '–') : null)
   const episodes = run ? run.episodes.filter((e) => e.counted).length : null
   return (
     <button

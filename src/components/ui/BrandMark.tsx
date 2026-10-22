@@ -1,22 +1,29 @@
-/** Solid accent tile with a signal glyph */
+/** Mesh signal blue on the ink tile: lighter than the accent so it holds up on the dark */
+const MESH = '#5b9dff'
+
+/**
+ * Ink tile with a targeting frame around a three-node mesh. public/favicon.svg draws the
+ * same mark for the browser tab; change both together.
+ */
 export function BrandMark({ size = 36 }: { size?: number }) {
   return (
     <div
-      className="rounded-xl bg-accent flex items-center justify-center text-white flex-shrink-0"
-      style={{ width: size, height: size }}
+      className="bg-ink flex items-center justify-center flex-shrink-0"
+      style={{ width: size, height: size, borderRadius: size * 0.26 }}
     >
-      <svg
-        width={size * 0.5}
-        height={size * 0.5}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      >
-        <path d="M5 12.5a10 10 0 0 1 14 0" />
-        <path d="M8.5 16a5 5 0 0 1 7 0" />
-        <circle cx="12" cy="19.5" r="1" fill="currentColor" />
+      <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 32 32" fill="none">
+        {/* Corner brackets of a sight */}
+        <path
+          d="M4 9V4h5M23 4h5v5M28 23v5h-5M9 28H4v-5"
+          stroke="white"
+          strokeWidth="2.25"
+          strokeLinecap="square"
+        />
+        {/* Mesh links, then the nodes over them */}
+        <path d="M16 8 9 21h14Z" stroke={MESH} strokeWidth="2" strokeLinejoin="round" />
+        <path d="M16 4.5 19.5 8 16 11.5 12.5 8Z" fill="white" />
+        <circle cx="9" cy="21" r="2.75" fill="white" />
+        <circle cx="23" cy="21" r="2.75" fill="white" />
       </svg>
     </div>
   )

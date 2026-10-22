@@ -2,8 +2,15 @@ import type { ReactNode } from 'react'
 import type { Workspace } from '../../hooks/useWorkspace'
 import type { RunEntry } from '../../lib/assembleRuns'
 import type { ExperimentRoot } from '../../lib/experimentIndex'
+import { missionScenarios } from '../../lib/missionCampaignIndex'
+import {
+  campaignScenarios,
+  campaignEvaluationCount,
+  diagnosticScenarios,
+} from '../../lib/campaignIndex'
 import { Button } from '../ui/Button'
 import { BrandMark } from '../ui/BrandMark'
+import { Loading } from '../ui/Spinner'
 import type { Section } from '../shell/NavRail'
 import { truncateText } from './BaselineInfo'
 import {
@@ -86,6 +93,21 @@ function evaluationCounts(paths: string[], roots: ExperimentRoot[]): Map<string,
       if (root === '' || path.startsWith(`${root}/`)) counts.set(root, (counts.get(root) ?? 0) + 1)
     }
   }
+  for (const layout of campaignScenarios(paths)) {
+    if (counts.has(layout.root)) counts.set(layout.root, campaignEvaluationCount(paths, layout))
+  }
+  for (const layout of diagnosticScenarios(paths)) {
+    if (counts.has(layout.root)) counts.set(layout.root, layout.sources.length)
+  }
+  for (const layout of missionScenarios(paths)) {
+    const prefix = layout.campaign ? `${layout.campaign}/` : ''
+    const operations = paths.filter(
+      (path) =>
+        path.startsWith(`${prefix}operations/${layout.scene}/`) &&
+        path.endsWith('/online_manifest.json')
+    ).length
+    if (counts.has(layout.root)) counts.set(layout.root, operations * 3)
+  }
   return counts
 }
 
@@ -103,17 +125,7 @@ function Welcome({ loading, onOpen }: { loading: boolean; onOpen: () => void }) 
         {/* Keyed on the state so the loading and ready contents cross-fade */}
         <div key={loading ? 'loading' : 'ready'} className={`w-full ${MOTION.enterFade}`}>
           {loading ? (
-            <div
-              className="mt-10 flex flex-col items-center gap-4"
-              role="status"
-              aria-live="polite"
-            >
-              <div
-                className="w-10 h-10 rounded-full border-[3px] border-accent/20 border-t-accent animate-spin"
-                aria-hidden="true"
-              />
-              <p className="text-lg font-medium text-ink-2">Loading simulations</p>
-            </div>
+            <Loading label="Loading simulations" size="lg" stacked className="mt-10" />
           ) : (
             <div className="flex flex-col items-center">
               <p className="mt-4 text-lg text-ink-2">Open your outputs folder to begin.</p>
@@ -144,6 +156,32 @@ export function HomePage({ workspace, onNavigate, onOpenRun, onOpenExperiment }:
 
   if (!dirName || loadingDir) {
     return <Welcome loading={loadingDir} onOpen={workspace.openFolder} />
+  }
+
+  // Nothing is shown until folders are chosen; the choice is kept for this outputs folder
+  if (workspace.includedFolders.length === 0 && workspace.folders.length > 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div
+          className={`glass w-full max-w-lg px-8 py-12 sm:px-12 sm:py-14 flex flex-col items-center text-center ${MOTION.enter}`}
+        >
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-ink-title">
+            Choose folders to show
+          </h1>
+          <p className="mt-4 text-lg text-ink-2">
+            Pick which folders in <span className="font-mono text-ink">{dirName}</span> this app
+            lists.
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => onNavigate('folders')}
+            className="mt-8 !h-12 !px-8 !text-lg"
+          >
+            Choose folders
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   const scenarios = groupRuns(runs, unplayableBaselines).flatMap(([batch, batchRuns]) =>

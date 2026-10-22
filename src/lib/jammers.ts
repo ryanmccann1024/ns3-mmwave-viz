@@ -36,10 +36,12 @@ export function parseJammers(json: string): JammerState[] {
           (f): f is number => typeof f === 'number' && Number.isFinite(f)
         ),
         txPowerDbm: number(j.tx_power_dbm, 25),
+        txArrayGainDbi: number(j.tx_array_gain_dbi, 12),
         dutyCycle: number(j.duty_cycle, 1),
         maxRangeM: number(j.max_range_m),
         beamwidthDeg: number(j.beamwidth_deg, 360),
         azimuthDeg: number(j.azimuth_deg),
+        zenithDeg: number(j.zenith_deg),
       }
     })
   } catch {

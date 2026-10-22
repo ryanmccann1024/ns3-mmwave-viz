@@ -6,16 +6,14 @@ import { isCatalogFile } from './src/lib/resultCatalog.ts'
 /**
  * Read-only dev helper for the simulator outputs directory.
  *
- * GET /api/outputs  → JSON array of relative file paths (bounded, filtered)
+ * GET /api/outputs  → complete JSON array of reader-relative file paths
  * GET /outputs/...  → a single regular file inside the outputs root
  */
-
-export const LIST_LIMIT = 50_000
 
 /** Lists reader-relevant files under root. Symlinks are never followed. */
 export function listOutputs(
   root: string,
-  limit = LIST_LIMIT
+  limit = Number.POSITIVE_INFINITY
 ): { paths: string[]; truncated: boolean } {
   const paths: string[] = []
   let truncated = false

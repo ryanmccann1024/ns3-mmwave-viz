@@ -15,6 +15,13 @@ import { Button } from '../ui/Button'
 import { trailColor } from '../../styles/tokens'
 import { policyLabel } from '../../lib/rlLabels'
 import { MOTION } from '../../styles/motion'
+import { Loading } from '../ui/Spinner'
+import { parseArchivedNodeIds } from '../../lib/nodeIdentity'
+import { nodeOutages } from '../../lib/nodeOutages'
+import { resolveScenarioInputs } from '../../lib/scenarioInputs'
+import { missionOverlay } from '../../lib/missionTarget'
+import { OutageNotice, useOutageNotice } from '../OutageNotice'
+import { missionObjective, objectiveValue } from '../../lib/missionObjective'
 
 type ReplayData = {
   frames: SimFrame[]
@@ -22,6 +29,8 @@ type ReplayData = {
   buildings: BuildingState[]
   jammers: JammerState[]
   trails: Trail[]
+  /** node ids from the archived nodes.json, in CSV order, when it was saved and valid */
+  declaredNodeIds?: string[]
 }
 
 const percent = (value: number) => `${(100 * value).toFixed(1)}%`
@@ -76,16 +85,20 @@ function ReplayPanel({
   const [link, setLink] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
-    const f = choice.episode.files
-    const paths = [f.links, f.positions, f.flows, f.routes, f.nodesJson, f.buildings, f.jammersJson]
     Promise.all([
-      Promise.all(
-        paths.map(async (path) => {
-          if (!path) return null
-          const file = await catalog.getFile(path)
-          if (!file) throw new Error(`Missing ${path}`)
-          return file.text()
-        })
+      // nodes.json and buildings.json come through the same checked lookup as the player
+      resolveScenarioInputs(catalog, choice.episode.files, choice.episode.dir).then(
+        ({ files: f }) =>
+          Promise.all(
+            [f.links, f.positions, f.flows, f.routes, f.nodesJson, f.buildings, f.jammersJson].map(
+              async (path) => {
+                if (!path) return null
+                const file = await catalog.getFile(path)
+                if (!file) throw new Error(`Missing ${path}`)
+                return file.text()
+              }
+            )
+          )
       ),
       // A missing path only costs the trail, never the replay
       evaluation ? readTrails(catalog, evaluation, choice.episode) : null,
@@ -114,6 +127,8 @@ function ReplayPanel({
           jammers: jammersText ? parseJammers(jammersText) : [],
           trails: trailEntry?.trails ?? [],
         }
+        const declared = parseArchivedNodeIds(nodesJsonText)
+        if (declared.status === 'valid') data.declaredNodeIds = declared.ids
         if (!cancelled) setLoaded({ key: choice.key, data })
       })
       .catch((error) => {
@@ -130,26 +145,71 @@ function ReplayPanel({
   const nextIndex = nextTime === null ? null : frameIndexAtTime(times, nextTime, 1e-6)
   const next = nextIndex === null ? null : (data?.frames[nextIndex] ?? null)
   const episodeMean = choice.episode.metrics?.delivery_ratio ?? null
+  const objective = evaluation ? missionObjective(evaluation) : null
   const travel = choice.episode.metrics?.travel_m_total ?? null
+  const cumulativeTravel = useMemo(() => {
+    if (!data || index === null) return null
+    let total = 0
+    for (let i = 1; i <= index; i++) {
+      const previous = new Map(data.frames[i - 1].nodes.map((n) => [n.id, n]))
+      for (const n of data.frames[i].nodes) {
+        const before = previous.get(n.id)
+        if (before) total += Math.hypot(n.x - before.x, n.y - before.y)
+      }
+    }
+    return total
+  }, [data, index])
   const policy = choice.episode.policy
+  // Each replay has its own failures and its own investigator mapping
+  const outages = useMemo(() => (data ? nodeOutages(data.frames) : []), [data])
+  const outageNotice = useOutageNotice(outages, index ?? 0)
+  const mission = useMemo(() => {
+    const first = data?.frames[0]
+    return missionOverlay(
+      evaluation?.contract,
+      first ? new Set(first.nodes.map((n) => n.id)) : null,
+      data?.declaredNodeIds
+    )
+  }, [evaluation, data])
   return (
     <section
       className={`glass p-1.5 flex flex-col min-h-0 min-w-0 ${MOTION.enter}`}
       aria-label={choice.label}
     >
-      <div className="relative z-10 px-4 pt-3 pb-4 flex items-center gap-7">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <div className="relative z-10 px-4 pt-3 pb-4 flex flex-wrap items-center gap-x-7 gap-y-3">
+        <div className="flex items-center gap-2.5 min-w-[14rem] flex-1">
           <Dot policy={policy} />
-          <h3 className="text-xl font-semibold tracking-tight text-ink-title truncate">
+          <h3
+            className="min-w-0 text-xl font-semibold tracking-tight text-ink-title truncate"
+            title={choice.label}
+          >
             {choice.label}
           </h3>
           {action}
         </div>
-        <Figure value={episodeMean === null ? '–' : percent(episodeMean)} label="Delivery" />
-        <Figure
-          value={travel === null ? '–' : `${Math.round(travel).toLocaleString()} m`}
-          label="Travel"
-        />
+        <div className="flex items-center gap-7 ml-auto">
+          <Figure
+            value={
+              objective
+                ? objectiveValue(choice.episode.metrics?.[objective.metric], objective)
+                : episodeMean === null
+                  ? '–'
+                  : percent(episodeMean)
+            }
+            label={objective?.label ?? 'Episode delivery'}
+          />
+          {/* Distance moved up to the shown frame, so the two replays can be raced */}
+          <Figure
+            value={
+              cumulativeTravel !== null
+                ? `${Math.round(cumulativeTravel).toLocaleString()} m`
+                : travel === null
+                  ? '–'
+                  : `${Math.round(travel).toLocaleString()} m`
+            }
+            label="Travel"
+          />
+        </div>
       </div>
       <div className="relative isolate flex-1 min-h-0 rounded-xl overflow-hidden">
         {frame && data ? (
@@ -170,22 +230,22 @@ function ReplayPanel({
               onSelectLink={setLink}
               trails={data.trails}
               replayPolicy={policy}
+              mission={mission}
             />
+            <OutageNotice outages={outageNotice} onSelectNode={setNode} />
           </div>
         ) : (
           <div
             className="absolute inset-0 flex items-center justify-center p-6 text-center bg-ink/[0.03]"
             role="status"
           >
-            <span
-              className={`text-base font-medium text-ink-2 ${loaded?.error ? '' : 'animate-pulse-soft'}`}
-            >
-              {loaded?.key === choice.key && loaded.error
-                ? loaded.error
-                : data
-                  ? `No frame at ${time.toFixed(1)} s`
-                  : 'Loading'}
-            </span>
+            {loaded?.key === choice.key && loaded.error ? (
+              <span className="text-base font-medium text-ink-2">{loaded.error}</span>
+            ) : data ? (
+              <span className="text-base font-medium text-ink-2">{`No frame at ${time.toFixed(1)} s`}</span>
+            ) : (
+              <Loading label="Loading replay" />
+            )}
           </div>
         )}
       </div>
@@ -229,7 +289,7 @@ function ChoiceMenu({
       </Button>
       {open && (
         <div
-          className={`absolute left-0 top-full mt-2 w-64 flex flex-col rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-y divide-hairline ${MOTION.enter}`}
+          className={`absolute right-0 top-full mt-2 w-max min-w-[16rem] max-w-[min(24rem,calc(100vw-2rem))] max-h-[min(28rem,60vh)] overflow-y-auto overscroll-contain flex flex-col rounded-xl border border-hairline bg-white shadow-control divide-y divide-hairline ${MOTION.enter}`}
           role="menu"
         >
           {choices.map((choice) => {
@@ -240,18 +300,19 @@ function ChoiceMenu({
                 type="button"
                 role="menuitemradio"
                 aria-checked={on}
+                title={choice.label}
                 onClick={() => {
                   onChange(choice.key)
                   setOpen(false)
                 }}
-                className={`h-11 px-4 flex items-center gap-2.5 text-left text-base truncate ${MOTION.colors} ${
+                className={`h-11 flex-shrink-0 px-4 flex items-center gap-2.5 text-left text-base ${MOTION.colors} ${
                   on
                     ? 'bg-accent-wash text-accent-ink font-semibold'
                     : 'text-ink font-medium hover:bg-accent-wash/60'
                 }`}
               >
                 <Dot policy={choice.episode.policy} />
-                {choice.label}
+                <span className="min-w-0 truncate">{choice.label}</span>
               </button>
             )
           })}
@@ -306,6 +367,7 @@ export function ReplayComparison({
       gridSize,
       planeSize: gridSize * 1.2,
       viewSpan: span * 1.6,
+      extent: { minX: xmin, maxX: xmax, minY: ymin, maxY: ymax },
     }
   }, [contract])
   const panel = (choice: ReplayChoice, action?: ReactNode) => (

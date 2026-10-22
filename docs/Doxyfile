@@ -1,0 +1,71 @@
+# Doxyfile for the ns3-mmwave-viz documentation site (Doxygen 1.18.0).
+#
+# Purpose: render the authored Markdown pages in this directory plus the
+# repository README with the vendored doxygen-awesome-css theme. No TypeScript
+# extraction: INPUT lists Markdown files only.
+#
+# Working directory: docs/ (this directory; INPUT paths are relative to it).
+# Command:           doxygen Doxyfile        -> html/index.html
+# Warnings:          doxygen-warnings.log    (ignored by docs/.gitignore)
+#
+# Only non-default tags are listed; `doxygen -g` shows every default.
+
+PROJECT_NAME           = "ns3-mmwave-viz"
+# Version from package.json. The tagline lives on index.md, not PROJECT_BRIEF.
+PROJECT_NUMBER         = "v0.1.0"
+OUTPUT_DIRECTORY       = .
+
+INPUT                  = index.md \
+                         generating-the-docs.md \
+                         system-overview.md \
+                         source-map.md \
+                         ../README.md
+FILE_PATTERNS          = *.md
+RECURSIVE              = NO
+EXCLUDE                = theme
+USE_MDFILE_AS_MAINPAGE = index.md
+# Doxygen >= 1.12 otherwise treats ../README.md as directory documentation
+# (\dir) instead of the page labelled {#viz_readme}.
+IMPLICIT_DIR_DOCS      = NO
+# The README keeps its own title for readers of the repository; on this site
+# it is the "User guide" page, as on the simulator site.
+FILTER_PATTERNS        = "*README.md=sed -e '1s/^# .* {#viz_readme}$/# User guide {#viz_readme}/'"
+
+# Authored Markdown only; nothing is extracted from source code.
+EXTRACT_ALL            = NO
+AUTOLINK_SUPPORT       = NO
+SHOW_FILES             = NO
+SHOW_NAMESPACES        = NO
+
+GENERATE_LATEX         = NO
+WARN_LOGFILE           = doxygen-warnings.log
+
+# Sidebar entries: the pages only (see the comment in DoxygenLayout.xml).
+LAYOUT_FILE            = DoxygenLayout.xml
+
+# Theme: doxygen-awesome-css v2.5.0, sidebar-only variant (see theme/provenance.md),
+# with the site layer theme/viz.css loaded last.
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+HTML_COLORSTYLE        = LIGHT
+# Must equal --side-nav-fixed-width in theme/viz.css.
+TREEVIEW_WIDTH         = 340
+HTML_HEADER            = header.html
+HTML_EXTRA_STYLESHEET  = theme/doxygen-awesome-css/doxygen-awesome.css \
+                         theme/doxygen-awesome-css/doxygen-awesome-sidebar-only.css \
+                         theme/doxygen-awesome-css/doxygen-awesome-sidebar-only-darkmode-toggle.css \
+                         theme/viz.css
+HTML_EXTRA_FILES       = theme/doxygen-awesome-css/doxygen-awesome-darkmode-toggle.js \
+                         theme/doxygen-awesome-css/doxygen-awesome-fragment-copy-button.js \
+                         theme/doxygen-awesome-css/doxygen-awesome-paragraph-link.js \
+                         theme/doxygen-awesome-css/doxygen-awesome-interactive-toc.js
+# Required by the theme's fragment-copy-button (Doxygen >= 1.10) and
+# interactive-TOC (Doxygen >= 1.14) extensions.
+HTML_COPY_CLIPBOARD    = NO
+PAGE_OUTLINE_PANEL     = NO
+
+# System diagram: a pre-generated SVG (diagrams/system-overview.py writes
+# diagrams/system-overview.svg), so Graphviz is not needed.
+HAVE_DOT               = NO
+IMAGE_PATH             = diagrams

@@ -140,6 +140,52 @@ function detectGatewayNode(flowsByTime: Map<number, FlowState[]>): number | null
   return null
 }
 
+/** Physical types the simulator writes in positions.csv, as the viewer's NodeType */
+const PHYSICAL_TYPES: Record<string, NodeType> = {
+  pedestrian: 'ground',
+  drone: 'air',
+  uav: 'air',
+  vehicle: 'vehicle',
+}
+
+/**
+ * A positions.csv node_type as a NodeType. Physical types (pedestrian, drone, vehicle) are
+ * explicit; anything else is passed through when the viewer knows it, else a generic peer.
+ */
+export function csvNodeType(raw: string | undefined): { type: NodeType; explicit: boolean } {
+  const v = (raw ?? '').trim().toLowerCase()
+  if (v in PHYSICAL_TYPES) return { type: PHYSICAL_TYPES[v], explicit: true }
+  if (v === 'ground' || v === 'air' || v === 'bs' || v === 'vehicle' || v === 'gateway')
+    return { type: v, explicit: false }
+  return { type: 'peer', explicit: false }
+}
+
+/**
+ * Original node IDs from nodes.json, by CSV id. The simulator writes each node's index in
+ * nodes.json order as its CSV node_id, so names are attached only when the declared roster
+ * and the CSV roster are exactly the same ids 0..N-1.
+ */
+export function declaredNodeNames(
+  nodesJsonText: string | undefined,
+  csvIds: ReadonlySet<number>
+): Map<number, string> | null {
+  if (!nodesJsonText) return null
+  let raw: unknown
+  try {
+    raw = JSON.parse(nodesJsonText)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length !== csvIds.size) return null
+  const names = new Map<number, string>()
+  for (let i = 0; i < raw.length; i++) {
+    const id = (raw[i] as { id?: unknown } | null)?.id
+    if (typeof id !== 'string' || id === '' || !csvIds.has(i)) return null
+    names.set(i, id)
+  }
+  return new Set(names.values()).size === names.size ? names : null
+}
+
 export interface ParseFilesInput {
   linksText: string
   posText: string
@@ -171,9 +217,8 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
         nodeRoles = new Map()
         nodesArr.forEach((n: { role?: string; node_type?: string }, i: number) => {
           if (n.role) nodeRoles!.set(i, n.role)
-          if (n.node_type === 'drone') declaredTypes.set(i, 'air')
-          if (n.node_type === 'pedestrian') declaredTypes.set(i, 'ground')
-          if (n.node_type === 'vehicle') declaredTypes.set(i, 'vehicle')
+          const declared = n.node_type ? PHYSICAL_TYPES[n.node_type] : undefined
+          if (declared) declaredTypes.set(i, declared)
         })
       }
     } catch {
@@ -183,11 +228,18 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
 
   // -- Positions --
   const posByTime = new Map<number, NodeState[]>()
+  let physicalTypes = false
   for (const r of posRows) {
     const t = parseFloat((r as Record<string, string>).time_s)
     if (!posByTime.has(t)) posByTime.set(t, [])
     const nodeId = parseInt((r as Record<string, string>).node_id)
-    let nodeType = ((r as Record<string, string>).node_type?.trim() as NodeType) ?? 'ground'
+    const csvType = csvNodeType((r as Record<string, string>).node_type)
+    let nodeType = csvType.type
+    // A physical type written by the simulator is declared, never re-inferred from motion
+    if (csvType.explicit) {
+      physicalTypes = true
+      if (!declaredTypes.has(nodeId)) declaredTypes.set(nodeId, nodeType)
+    }
     // Explicit role takes priority over declared type; otherwise use the
     // physical type saved with the episode instead of motion inference.
     if (nodeRoles?.has(nodeId)) {
@@ -301,7 +353,13 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
   }
 
   // Detect gateway node from flow patterns and override node types
-  const gatewayId = detectGatewayNode(flowsByTime)
+  // A declared roster (nodes.json roles, physical types in the CSV) or a non-gateway flow
+  // topology already says what each node is, so flow patterns never turn a peer into a gateway
+  const topology = parseMeta(posText).flowTopology
+  const gatewayId =
+    (nodeRoles && nodeRoles.size > 0) || physicalTypes || (topology && !/gateway/i.test(topology))
+      ? null
+      : detectGatewayNode(flowsByTime)
   if (gatewayId !== null) {
     for (const nodes of posByTime.values()) {
       const gw = nodes.find((n) => n.id === gatewayId)
@@ -324,6 +382,9 @@ export function parseFiles(input: ParseFilesInput): SimFrame[] {
   }))
 
   inferNodeTypes(frames, declaredTypes)
+  const names = declaredNodeNames(nodesJsonText, new Set(frames[0]?.nodes.map((n) => n.id) ?? []))
+  if (names)
+    for (const frame of frames) for (const node of frame.nodes) node.name = names.get(node.id)
   return frames
 }
 

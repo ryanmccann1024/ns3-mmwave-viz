@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
-import { Line } from '@react-three/drei'
+import { Line, Text } from '@react-three/drei'
+import { policyLabel } from '../../lib/rlLabels'
 import type { TrailPoint } from '../../lib/trajectory'
 import { decimate } from '../../lib/trajectory'
-import { trailColor } from '../../styles/tokens'
+import { nodeTrailColor, trailColor } from '../../styles/tokens'
 import { simToThree } from './utils/coordinates'
 
 export interface Trail {
@@ -56,10 +57,12 @@ export function TrajectoryLayer({ trails, dim, posScale, replayPolicy, time }: P
         .map((t) => ({
           key: `${t.policy}-${t.nodeIndex}`,
           policy: t.policy,
-          color: trailColor(t.policy),
+          nodeId: t.nodeId,
+          // the live replay colours each node's path apart; other policies keep their policy colour
+          color: t.policy === replayPolicy ? nodeTrailColor(t.nodeIndex) : trailColor(t.policy),
           points: decimate(t.points, MAX_TRAIL_POINTS),
         })),
-    [trails]
+    [trails, replayPolicy]
   )
 
   const toThree = (p: TrailPoint): Vec3 => simToThree(p.x, p.y, p.z, dim, posScale)
@@ -131,6 +134,18 @@ export function TrajectoryLayer({ trails, dim, posScale, replayPolicy, time }: P
                     depthWrite={false}
                   />
                 </mesh>
+                {/* a ghost is another policy's node, never a peer of this replay: name it */}
+                <Text
+                  position={[0, GHOST_RADIUS + 6, 0]}
+                  fontSize={3}
+                  color={path.color}
+                  anchorX="center"
+                  anchorY="middle"
+                  renderOrder={8}
+                  raycast={() => null}
+                >
+                  {`${policyLabel(path.policy)}${path.nodeId ? ` · ${path.nodeId}` : ''}`}
+                </Text>
                 <mesh rotation={[Math.PI / 2, 0, 0]} raycast={() => null}>
                   <torusGeometry args={[GHOST_RADIUS + 2, 0.8, 8, 28]} />
                   <meshBasicMaterial

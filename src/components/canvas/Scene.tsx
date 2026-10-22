@@ -4,13 +4,19 @@ import type { SimFrame, BuildingState, JammerState } from '../../types'
 import type { SceneBounds } from '../../hooks/useSimData'
 import { linkKey } from './utils/linkColors'
 import { NodeObject } from './NodeObject'
+import { MissionTargetLayer } from './MissionTargetLayer'
+import type { InvestigationTarget } from '../../lib/missionTarget'
 import { LinkObject } from './LinkObject'
 import { BuildingObject } from './BuildingObject'
 import { SceneEnvironment } from './SceneEnvironment'
 import { RainEffect } from './RainEffect'
 import { TrafficLayer } from './TrafficLayer'
 import { TrajectoryLayer } from './TrajectoryLayer'
+import { nodeTrailColor } from '../../styles/tokens'
 import { JammerObject } from './JammerObject'
+import { JammerFieldLayer } from './JammerFieldLayer'
+import { JammerVolumeLayer } from './JammerVolumeLayer'
+import type { JammerMap } from './JammerFieldLayer'
 import type { Trail } from './TrajectoryLayer'
 import type { BaselinePlan } from '../../lib/baselineManifest'
 import { PlacementLayer } from './PlacementLayer'
@@ -36,6 +42,9 @@ interface Props {
   trails?: Trail[]
   replayPolicy?: string
   placementPlan?: BaselinePlan | null
+  mission?: { target: InvestigationTarget; investigatorCsvId: number | null } | null
+  /** the jamming map, when it is switched on */
+  jammerMap?: JammerMap | null
 }
 
 export function Scene({
@@ -58,6 +67,8 @@ export function Scene({
   trails,
   replayPolicy,
   placementPlan,
+  mission,
+  jammerMap,
 }: Props) {
   const { nodes, links } = frame
 
@@ -108,6 +119,18 @@ export function Scene({
 
   // Scale camera distance and controls with scene size
   const scale = gs / 500 // 1.0 for default 500-unit scenes
+  // Models drawn a little larger than life on big sites so they read; fixed per scene, never per zoom
+  const modelScale = Math.min(2.5, Math.max(1, gs / 300))
+  // live replay path colour per node, matched through the nodes.json id
+  const replayTrailColors = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const t of trails ?? []) {
+      if (t.policy === replayPolicy && t.nodeId && t.points.length >= 2) {
+        m.set(t.nodeId, nodeTrailColor(t.nodeIndex))
+      }
+    }
+    return m
+  }, [trails, replayPolicy])
   const camNear = Math.max(0.1, scale * 0.5)
   const camFar = Math.max(5000, gs * 4)
 
@@ -175,12 +198,51 @@ export function Scene({
         gridSize={gs}
         planeSize={sceneBounds.planeSize * compactFactor}
         scenario={scenario}
+        extent={sceneBounds.extent}
+        buildings={buildings}
+        posScale={compactFactor}
+        dim={dimensions}
       />
 
       {/* Buildings */}
       {buildings.map((b) => (
-        <BuildingObject key={b.id} building={b} dim={dimensions} posScale={compactFactor} />
+        <BuildingObject
+          key={b.id}
+          building={b}
+          dim={dimensions}
+          posScale={compactFactor}
+          scenario={scenario}
+        />
       ))}
+
+      {jammerMap && jammerMap.mode === 'volume' && dimensions === 3 && (
+        <JammerVolumeLayer
+          jammers={jammers}
+          channel={jammerMap.channel}
+          buildings={buildings}
+          carrierHz={carrierHz}
+          volume={jammerMap.volume}
+          timeS={frame.time}
+          nextTimeS={nextFrame?.time ?? null}
+          alphaRef={alphaRef}
+          posScale={compactFactor}
+        />
+      )}
+      {jammerMap && dimensions !== 1 && (jammerMap.mode === 'slice' || dimensions === 2) && (
+        <JammerFieldLayer
+          jammers={jammers}
+          channel={jammerMap.channel}
+          buildings={buildings}
+          carrierHz={carrierHz}
+          grid={jammerMap.grid}
+          heightM={jammerMap.heightM}
+          timeS={frame.time}
+          nextTimeS={nextFrame?.time ?? null}
+          alphaRef={alphaRef}
+          dim={dimensions}
+          posScale={compactFactor}
+        />
+      )}
 
       {/* Jammer emitters are not mesh nodes or action slots. */}
       {jammers.map((jammer) => (
@@ -188,6 +250,8 @@ export function Scene({
           key={jammer.id}
           jammer={jammer}
           timeS={frame.time}
+          nextTimeS={nextFrame?.time ?? null}
+          alphaRef={alphaRef}
           carrierHz={carrierHz}
           dim={dimensions}
           posScale={compactFactor}
@@ -198,7 +262,8 @@ export function Scene({
       {links.map((l) => {
         const nA = nodeById.get(l.nodeA),
           nB = nodeById.get(l.nodeB)
-        if (!nA || !nB) return null
+        // An offline node has no radio: its rows stay in links.csv but are not links
+        if (!nA || !nB || !nA.active || !nB.active) return null
         const key = linkKey(l)
         const sel = key === selectedLink
         const hi = highlightedLinks.has(key)
@@ -248,6 +313,23 @@ export function Scene({
         <PlacementLayer plan={placementPlan} dimensions={dimensions} posScale={compactFactor} />
       )}
 
+      {mission && (
+        <MissionTargetLayer
+          target={mission.target}
+          investigator={
+            mission.investigatorCsvId === null ? undefined : nodeById.get(mission.investigatorCsvId)
+          }
+          nextInvestigator={
+            mission.investigatorCsvId === null
+              ? undefined
+              : nextNodeById.get(mission.investigatorCsvId)
+          }
+          alphaRef={alphaRef}
+          dim={dimensions}
+          posScale={compactFactor}
+        />
+      )}
+
       {/* Nodes */}
       {nodes.map((n) => {
         const sel = n.id === selectedNode
@@ -263,6 +345,9 @@ export function Scene({
             dimmed={hasSelection && !sel && !hi}
             dim={dimensions}
             posScale={compactFactor}
+            role={mission?.investigatorCsvId === n.id ? 'INVESTIGATOR' : undefined}
+            trailTint={n.name !== undefined ? replayTrailColors.get(n.name) : undefined}
+            modelScale={modelScale}
             onClick={() => {
               onSelectNode(sel ? null : n.id)
               onSelectLink(null)

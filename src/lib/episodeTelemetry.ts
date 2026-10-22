@@ -1,6 +1,6 @@
 // Reader for an episode's steps.jsonl: one header line, then one record per decision.
 
-export const SUPPORTED_TELEMETRY_VERSION = 1
+export const SUPPORTED_TELEMETRY_VERSIONS = [1, 2, 3]
 
 export interface TelemetryContract {
   node_ids: string[]
@@ -72,12 +72,12 @@ export function parseSteps(text: string): ParseStepsResult {
       return { ok: false, message: `steps.jsonl line ${i + 1} is not a JSON object` }
     }
     if (header === null) {
-      if (value.telemetry_version !== SUPPORTED_TELEMETRY_VERSION) {
+      if (!SUPPORTED_TELEMETRY_VERSIONS.includes(value.telemetry_version as number)) {
         return {
           ok: false,
           message:
             `unsupported telemetry_version ${String(value.telemetry_version)} in steps.jsonl ` +
-            `(this viewer supports ${SUPPORTED_TELEMETRY_VERSION})`,
+            `(this viewer supports ${SUPPORTED_TELEMETRY_VERSIONS.join(', ')})`,
         }
       }
       if (!isRecord(value.contract)) {

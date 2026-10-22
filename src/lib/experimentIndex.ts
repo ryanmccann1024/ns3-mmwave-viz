@@ -1,4 +1,5 @@
 import type { ResultCatalog } from './resultCatalog.ts'
+import { missionScenarios, isMissionInternal, loadMissionScenario } from './missionCampaignIndex.ts'
 import { checkComparison } from './comparisonView.ts'
 import type { RawComparison } from './comparisonView.ts'
 import {
@@ -10,19 +11,28 @@ import {
   sanitizeText,
 } from './baselineManifest.ts'
 import type { BaselineManifest, IdentityCheck, ScenarioIdentity } from './baselineManifest.ts'
+import { resolveScenarioInputs } from './scenarioInputs.ts'
+import type { InputHashes, ScenarioInputSources } from './scenarioInputs.ts'
+import {
+  campaignScenarios,
+  campaignLayout,
+  loadCampaignScenario,
+  diagnosticScenarios,
+  loadDiagnosticScenario,
+} from './campaignIndex.ts'
 
 // Index of an experiment folder built from small manifests only. Every path is
 // catalog-relative; absolute paths recorded in manifests are never dereferenced.
 
 export const SUPPORTED_VERSIONS = {
   plan: 1,
-  evalManifest: [2, 3],
-  trainManifest: [4, 5],
+  evalManifest: [2, 3, 4, 5, 6, 7, 8],
+  trainManifest: [4, 5, 6, 7],
   fetchManifest: 1,
 }
 
 export type ArtifactState = 'ok' | 'incomplete' | 'failed' | 'missing' | 'not_fetched'
-export type RootKind = 'plan' | 'comparison' | 'eval'
+export type RootKind = 'plan' | 'comparison' | 'eval' | 'campaign' | 'collection'
 
 export interface ExperimentRoot {
   /** catalog-relative directory; '' is the catalog root */
@@ -31,7 +41,13 @@ export interface ExperimentRoot {
 }
 
 export interface ArtifactReport {
-  artifact: 'experiment_plan' | 'comparison' | 'fetch_manifest' | 'eval_manifest'
+  artifact:
+    | 'experiment_plan'
+    | 'comparison'
+    | 'fetch_manifest'
+    | 'eval_manifest'
+    | 'online_manifest'
+    | 'campaign'
   path: string
   present: boolean
   usable: boolean
@@ -60,10 +76,17 @@ export interface EpisodeFilePaths {
   rlEpisode: string | null
   nodesJson: string | null
   jammersJson: string | null
+  /** archived inputs/run.ini: the channel settings the jamming map needs */
+  runIni: string | null
   buildings: string | null
+  /** the scenario's nodes.json / buildings.json SHA-256 from the manifest, for files run.ini names */
+  inputHashes?: InputHashes
 }
 
 export interface Episode {
+  rewardRescored?: boolean
+  /** metric keys read from the scenario's phase report rather than the evaluation manifest */
+  reportMetrics?: string[]
   evaluationKey: string
   label: string
   /** null for a baseline-only evaluation, which has no trained model */
@@ -119,6 +142,19 @@ export interface EvalBaselineInfo {
 }
 
 export interface Evaluation {
+  missionTags?: { phase: number | null; origin: string; terms: string[] }
+  missionRewardTitle?: string
+  missionPpoLabel?: string
+  missionVariantKey?: string
+  historyOnly?: boolean
+  missionKind?: string
+  stage?: string
+  provenance?: {
+    kind: 'new' | 'previous' | 'online' | 'fixed'
+    profile: string | null
+    settings: Record<string, unknown> | null
+    description: string
+  }
   /** `${label}#${trainingSeed}` */
   key: string
   label: string
@@ -152,6 +188,8 @@ export interface Evaluation {
   episodes: Episode[]
   /** by policy name; only policies whose block carries a baseline object */
   baselines: Record<string, EvalBaselineInfo>
+  /** the manifest's scenario_identity hashes */
+  scenarioIdentity?: ScenarioIdentity | null
 }
 
 export interface PlanRow {
@@ -165,7 +203,11 @@ export interface PlanRow {
 
 export interface PlanInfo {
   name: string | null
-  seeds: { training: number[]; model_selection: number | null; held_out: number[] }
+  seeds: {
+    training: number[]
+    model_selection: number | null
+    held_out: number[]
+  }
   rows: PlanRow[]
 }
 
@@ -191,6 +233,7 @@ export interface Experiment {
   artifacts: ArtifactReport[]
   issues: string[]
   evaluations: Evaluation[]
+  campaignProgress?: { status: string; trained: number; expected: number }
 }
 
 type Rec = Record<string, unknown>
@@ -213,11 +256,24 @@ export function hostBasename(p: string): string {
 
 async function readSmallJson(catalog: ResultCatalog, path: string) {
   const file = await catalog.getFile(path)
-  if (!file) return { present: false, data: null as unknown, message: `${path} is not present` }
+  if (!file)
+    return {
+      present: false,
+      data: null as unknown,
+      message: `${path} is not present`,
+    }
   try {
-    return { present: true, data: JSON.parse(await file.text()) as unknown, message: null }
+    return {
+      present: true,
+      data: JSON.parse(await file.text()) as unknown,
+      message: null,
+    }
   } catch {
-    return { present: true, data: null as unknown, message: `${path} is not valid JSON` }
+    return {
+      present: true,
+      data: null as unknown,
+      message: `${path} is not valid JSON`,
+    }
   }
 }
 
@@ -234,10 +290,26 @@ function versionMessage(data: unknown, field: string, supported: number | number
 /** Candidate experiment folders, found from catalog paths alone. */
 export function discoverExperiments(catalog: ResultCatalog): ExperimentRoot[] {
   const paths = catalog.paths()
-  const found: ExperimentRoot[] = []
+  const missions = missionScenarios(paths)
+  const scenarios = campaignScenarios(paths)
+  const found: ExperimentRoot[] = [...missions, ...scenarios].map(({ root }) => ({
+    root,
+    kind: 'campaign',
+  }))
+  const diagnostics = diagnosticScenarios(paths)
+  found.push(...diagnostics.map(({ root }) => ({ root, kind: 'collection' as const })))
+  const diagnosticSources = new Set(
+    diagnostics.flatMap((layout) => layout.sources.map((source) => source.root))
+  )
+  // Profile plans, prior-model evaluations and shared caches belong to a scenario,
+  // rather than appearing as independent experiments in the campaign list.
+  const campaignMainRoots = [...new Set(scenarios.map((s) => s.main))]
   const add = (dirs: string[], kind: RootKind) => {
     const unique = [...new Set(dirs)].sort((a, b) => a.length - b.length || a.localeCompare(b))
     for (const root of unique) {
+      if (isMissionInternal(root, missions)) continue
+      if (campaignMainRoots.some((main) => under(main, root))) continue
+      if (diagnosticSources.has(root)) continue
       if (!found.some((f) => under(f.root, root))) found.push({ root, kind })
     }
   }
@@ -327,11 +399,12 @@ function buildEpisode(
   policy: string,
   entry: Rec,
   buildingsByDir: Map<string, string[]>,
-  fetched: boolean
+  fetched: boolean,
+  episodeDir?: string
 ): Episode {
   const seed = num(entry.seed) ?? NaN
   const name = hostBasename(str(entry.episode_dir) ?? '')
-  const dir = join(join(evaluation.evalDir, policy), name)
+  const dir = episodeDir ?? join(join(evaluation.evalDir, policy), name)
   const seedDir = join(dir, `seed-${seed}`)
   const at = (path: string) => (catalog.has(path) ? path : null)
   const buildings = buildingsByDir.get(join(dir, 'inputs')) ?? []
@@ -346,8 +419,15 @@ function buildEpisode(
     steps: at(join(dir, 'steps.jsonl')),
     rlEpisode: at(join(dir, 'rl_episode.json')),
     nodesJson: at(join(dir, 'inputs/nodes.json')),
-    jammersJson: at(join(dir, 'inputs/jammers.json')),
-    buildings: buildings.find((p) => p.endsWith('/buildings.json')) ?? buildings[0] ?? null,
+    jammersJson:
+      at(join(dir, 'motion-inputs/jammers.json')) ?? at(join(dir, 'inputs/jammers.json')),
+    runIni: at(join(dir, 'inputs/run.ini')),
+    buildings:
+      at(join(dir, 'inputs/buildings.json')) ??
+      buildings.find((p) => p.endsWith('/buildings.json')) ??
+      buildings[0] ??
+      null,
+    inputHashes: identityHashes(evaluation.scenarioIdentity),
   }
   const lacking = [
     files.links ? null : join(seedDir, 'links.csv'),
@@ -409,6 +489,7 @@ function applyManifest(evaluation: Evaluation, m: Rec) {
   evaluation.trainingRunDir = str(rec(m.bundle).run_dir)
   evaluation.modelSha256 = str(rec(m.bundle).model_sha256)
   evaluation.compatibilityNote = str(rec(m.compatibility).note)
+  evaluation.scenarioIdentity = identityOf(m.scenario_identity)
   const short = expected !== null && completed !== null && completed < expected
   if (evaluation.simulatorStatus === 'failed') {
     evaluation.state = 'failed'
@@ -426,8 +507,15 @@ function applyManifest(evaluation: Evaluation, m: Rec) {
 
 const HASH_MAX = 128
 
+export function identityHashes(identity: ScenarioIdentity | null | undefined): InputHashes {
+  return {
+    nodesJson: identity?.nodesJsonSha256 ?? null,
+    buildings: identity?.buildingsJsonSha256 ?? null,
+  }
+}
+
 /** A scenario identity object; null when absent or when it records no hash at all. */
-function identityOf(v: unknown): ScenarioIdentity | null {
+export function identityOf(v: unknown): ScenarioIdentity | null {
   if (!isRec(v)) return null
   const identity: ScenarioIdentity = {
     runIniSha256: sanitizeText(v.run_ini_sha256, HASH_MAX),
@@ -494,6 +582,13 @@ async function loadEvalBaseline(
 }
 
 export async function loadExperiment(catalog: ResultCatalog, root: string): Promise<Experiment> {
+  const mission = missionScenarios(catalog.paths()).find((layout) => layout.root === root)
+  if (mission)
+    return loadMissionScenario(catalog, mission, loadExperiment, buildEpisode, emptyEvaluation)
+  const layout = campaignLayout(catalog.paths(), root)
+  if (layout) return loadCampaignScenario(catalog, layout, loadExperiment, buildEpisode)
+  const diagnostic = diagnosticScenarios(catalog.paths()).find((layout) => layout.root === root)
+  if (diagnostic) return loadDiagnosticScenario(catalog, diagnostic, loadExperiment)
   const paths = catalog.paths().filter((p) => under(root, p))
   const artifacts: ArtifactReport[] = []
   const issues: string[] = []
@@ -600,7 +695,13 @@ export async function loadExperiment(catalog: ResultCatalog, root: string): Prom
         ? `${path} does not record ${label === null ? 'a label' : 'a training seed'}`
         : null
     const message = versionIssue ?? identityIssue
-    artifacts.push({ artifact: 'eval_manifest', path, present: true, usable: !message, message })
+    artifacts.push({
+      artifact: 'eval_manifest',
+      path,
+      present: true,
+      usable: !message,
+      message,
+    })
     if (message) {
       issues.push(message)
       // An unreadable manifest still marks its declared slot as failed rather than missing.
@@ -694,8 +795,11 @@ export interface EpisodeFiles {
   routesFile?: File
   nodesJsonFile?: File
   jammersJsonFile?: File
+  runIniFile?: File
   mcsFile?: File
   rxPowerFile?: File
+  /** Where replay scenario inputs came from, including the saved jammer route, and rejected references. */
+  inputSources?: ScenarioInputSources
 }
 
 export type EpisodeFilesResult = { ok: true; files: EpisodeFiles } | { ok: false; message: string }
@@ -712,9 +816,10 @@ export async function episodeFiles(
 /** The CSVs and JSON a player needs, read from resolved catalog paths. */
 export async function readPlaybackFiles(
   catalog: ResultCatalog,
-  f: EpisodeFilePaths,
+  paths: EpisodeFilePaths,
   where: string
 ): Promise<EpisodeFilesResult> {
+  const { files: f, sources } = await resolveScenarioInputs(catalog, paths, where)
   const get = async (path: string | null) =>
     path ? ((await catalog.getFile(path)) ?? undefined) : undefined
   const [
@@ -725,6 +830,7 @@ export async function readPlaybackFiles(
     routesFile,
     nodesJsonFile,
     jammersJsonFile,
+    runIniFile,
     mcsFile,
     rxPowerFile,
   ] = await Promise.all(
@@ -736,12 +842,16 @@ export async function readPlaybackFiles(
       f.routes,
       f.nodesJson,
       f.jammersJson,
+      f.runIni,
       f.mcs,
       f.rxPower,
     ].map(get)
   )
   if (!linksFile || !positionsFile) {
-    return { ok: false, message: `could not read links.csv/positions.csv under ${where}` }
+    return {
+      ok: false,
+      message: `could not read links.csv/positions.csv under ${where}`,
+    }
   }
   return {
     ok: true,
@@ -753,8 +863,10 @@ export async function readPlaybackFiles(
       routesFile,
       nodesJsonFile,
       jammersJsonFile,
+      runIniFile,
       mcsFile,
       rxPowerFile,
+      inputSources: sources,
     },
   }
 }
@@ -806,10 +918,13 @@ export async function loadTrainingSummary(
       modelUsedByEval: null,
     }
   }
-  const path = join(
-    root,
-    `train/${evaluation.label}/train-seed-${evaluation.trainingSeed}/train_manifest.json`
-  )
+  const path =
+    evaluation.trainingRunDir && catalog.has(join(evaluation.trainingRunDir, 'train_manifest.json'))
+      ? join(evaluation.trainingRunDir, 'train_manifest.json')
+      : join(
+          root,
+          `train/${evaluation.label}/train-seed-${evaluation.trainingSeed}/train_manifest.json`
+        )
   const r = await readSmallJson(catalog, path)
   const message =
     r.message ?? versionMessage(r.data, 'manifest_version', SUPPORTED_VERSIONS.trainManifest, path)

@@ -31,3 +31,15 @@ test('policyDelivery skips policies without measured episodes', () => {
   // @ts-expect-error minimal fixture: only the fields policyDelivery reads
   assert.deepEqual(policyDelivery({ evaluations: [{ episodes: [ep('hold', undefined)] }] }), [])
 })
+
+test('adaptation and its sampled control do not count as extra held-out models in overview delivery', () => {
+  // @ts-expect-error minimal fixture
+  const rows = policyDelivery({
+    evaluations: [
+      { episodes: [ep('model', 0.8)] },
+      { provenance: { kind: 'online' }, episodes: [ep('model', 0.1)] },
+      { provenance: { kind: 'fixed' }, episodes: [ep('model', 0.2)] },
+    ],
+  })
+  assert.equal(rows[0].delivery, 0.8)
+})

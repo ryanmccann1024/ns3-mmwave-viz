@@ -5,6 +5,9 @@ import { actionShares, meanComponents, rewardByDecision } from '../../lib/rlStat
 import { useEvaluationTelemetry } from '../../hooks/useRlData'
 import { ActionShareChart, RewardByDecisionChart, RewardSourceChart } from '../charts/RlCharts'
 import { Note } from '../ExperimentStatus'
+import { Loading } from '../ui/Spinner'
+import { MOTION } from '../../styles/motion'
+import { MissionTimeline } from './MissionTimeline'
 
 type Rec = Record<string, unknown>
 const rec = (v: unknown): Rec =>
@@ -26,18 +29,26 @@ export function EvaluationInsights({
       ? (schema.components as unknown[]).filter((c): c is string => typeof c === 'string')
       : []
     const weights = Array.isArray(schema.weights) ? (schema.weights as number[]) : []
-    const sourceRows = evaluation.policies.map((policy) => {
-      const done = evaluation.episodes.filter(
-        (e) => e.policy === policy && e.status === 'completed'
+    const sourceRows = evaluation.policies
+      .filter(
+        (policy) =>
+          policy === 'model' ||
+          evaluation.episodes
+            .filter((e) => e.policy === policy && e.status === 'completed')
+            .every((e) => components.every((c) => typeof e.rewardComponentsSum?.[c] === 'number'))
       )
-      const means = meanComponents(done.map((e) => e.rewardComponentsSum))
-      return {
-        policy,
-        contributions: Object.fromEntries(
-          components.map((c, i) => [c, (means[c] ?? 0) * (weights[i] ?? 1)])
-        ),
-      }
-    })
+      .map((policy) => {
+        const done = evaluation.episodes.filter(
+          (e) => e.policy === policy && e.status === 'completed'
+        )
+        const means = meanComponents(done.map((e) => e.rewardComponentsSum))
+        return {
+          policy,
+          contributions: Object.fromEntries(
+            components.map((c, i) => [c, (means[c] ?? 0) * (weights[i] ?? 1)])
+          ),
+        }
+      })
     return { components, sourceRows }
   }, [evaluation])
 
@@ -63,12 +74,21 @@ export function EvaluationInsights({
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
+      {ready && evaluation.contract && (
+        <MissionTimeline evaluation={evaluation} telemetry={ready} />
+      )}
       {telemetry?.state === 'loading' && (
-        <div className="glass p-6 text-base text-ink-2">Reading decision telemetry…</div>
+        <div className="glass p-6">
+          <Loading label="Reading decision telemetry" />
+        </div>
       )}
       {telemetry?.state === 'error' && <Note tone="warn">{telemetry.message}</Note>}
-      {decisionSeries.length > 0 && <RewardByDecisionChart series={decisionSeries} />}
-      <div className="flex flex-col gap-4 sm:gap-5">
+      {decisionSeries.length > 0 && (
+        <div className={MOTION.page}>
+          <RewardByDecisionChart series={decisionSeries} />
+        </div>
+      )}
+      <div className={`flex flex-col gap-4 sm:gap-5 ${MOTION.page}`}>
         {actionRows.length > 0 && ready && (
           <ActionShareChart rows={actionRows} actions={ready.actionMeanings} />
         )}

@@ -14,12 +14,14 @@ import { shortNumber } from '../../lib/format'
 import type { DecisionBandPoint, RollingPoint } from '../../lib/rlStats'
 import type { EvalCheckpoint } from '../../lib/trainingRun'
 import { actionColor, componentColor, trailColor } from '../../styles/tokens'
-import { policyLabel } from '../../lib/rlLabels'
+import { policyLabel, rewardComponentLabel } from '../../lib/rlLabels'
 
 import { AXIS, AXIS_LABEL, GRID } from './chartStyle'
 
 /** delivery_ratio -> Delivery ratio, for legends */
 const words = (key: string) => {
+  const reward = rewardComponentLabel(key)
+  if (reward !== key) return reward
   const s = key
     .replace(/_+/g, ' ')
     .trim()
@@ -47,6 +49,7 @@ const tickNumber = (v: number) =>
 export function ChartCard({
   title,
   subtitle,
+  aside,
   legend,
   children,
   height = 'h-64',
@@ -54,15 +57,20 @@ export function ChartCard({
   title: string
   /** one plain sentence on what the chart shows */
   subtitle?: ReactNode
+  /** controls on the title row, such as a metric switch */
+  aside?: ReactNode
   legend?: { label: string; color: string; dashed?: boolean; band?: boolean }[]
   children: ReactNode
   height?: string
 }) {
   return (
     <section className="glass p-6 flex flex-col gap-4 min-w-0">
-      <div className="flex flex-col gap-1.5">
-        <h3 className="text-xl font-semibold tracking-tight text-ink-title">{title}</h3>
-        {subtitle && <p className="text-base text-ink-2 leading-relaxed">{subtitle}</p>}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <h3 className="text-xl font-semibold tracking-tight text-ink-title">{title}</h3>
+          {subtitle && <p className="text-base text-ink-2 leading-relaxed">{subtitle}</p>}
+        </div>
+        {aside && <div className="max-w-full overflow-x-auto">{aside}</div>}
       </div>
       {legend && legend.length > 0 && <Legend items={legend} />}
       <div className={height}>{children}</div>
@@ -96,11 +104,11 @@ export function Legend({
   )
 }
 
-function TooltipBox({ children }: { children: ReactNode }) {
+export function TooltipBox({ children }: { children: ReactNode }) {
   return <div className="glass-chip px-3 py-2 text-sm flex flex-col gap-1">{children}</div>
 }
 
-function TipRow({ color, label, value }: { color?: string; label: string; value: string }) {
+export function TipRow({ color, label, value }: { color?: string; label: string; value: string }) {
   return (
     <div className="flex items-center gap-1.5 text-ink-2">
       {color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />}
@@ -323,7 +331,12 @@ export function ComponentTrendChart({
                 <TooltipBox>
                   <div className="font-medium text-ink">Episode {p.x}</div>
                   {components.map((c, i) => (
-                    <TipRow key={c} color={componentColor(i)} label={c} value={shortNumber(p[c])} />
+                    <TipRow
+                      key={c}
+                      color={componentColor(i)}
+                      label={words(c)}
+                      value={shortNumber(p[c])}
+                    />
                   ))}
                 </TooltipBox>
               )

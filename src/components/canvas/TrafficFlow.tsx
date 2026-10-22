@@ -64,7 +64,8 @@ export function TrafficFlow({ route, flow, nodeMap, dim, flowIndex, posScale = 1
   const color = FLOW_PALETTE[flowIndex % FLOW_PALETTE.length]
   const demand = flow?.demandMbps ?? 0
   const delivered = flow?.deliveredMbps ?? 0
-  const radius = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.min(demand / MAX_DEMAND, 1)
+  // Pulse size and speed both follow delivered traffic, never offered demand
+  const radius = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.min(delivered / MAX_DEMAND, 1)
   const pulseSpeed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.min(delivered / MAX_DEMAND, 1)
   // Dim opacity when delivery is poor
   const deliveryRatio = demand > 0 ? delivered / demand : 0

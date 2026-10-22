@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { MutableRefObject } from 'react'
 import type { PlaybackSpeed } from '../hooks/useSimData'
-import { PLAYBACK_SPEEDS } from '../styles/tokens'
+import { NODE_FAILURE_COLOR, PLAYBACK_SPEEDS } from '../styles/tokens'
 import { SECONDARY_BUTTON } from './ui/Button'
 import { Segmented } from './ui/Segmented'
 
@@ -19,6 +19,8 @@ interface Props {
   onPause: () => void
   onSeek: (index: number) => void
   onSetSpeed: (s: PlaybackSpeed) => void
+  /** moments worth jumping to, drawn as ticks on the bar (e.g. a node going down) */
+  markers?: { frameIndex: number; label: string }[]
 }
 
 const seconds = (t: number) => `${t.toFixed(1)} s`
@@ -35,6 +37,7 @@ export function PlaybackControls({
   onPause,
   onSeek,
   onSetSpeed,
+  markers = [],
 }: Props) {
   // The bar is drawn imperatively every animation frame from frameIndex plus the in-between
   // alpha, so it glides continuously instead of stepping once per saved frame
@@ -95,6 +98,19 @@ export function PlaybackControls({
             aria-label="Playback position"
             className="peer absolute inset-0 w-full h-full cursor-pointer opacity-0"
           />
+          {markers.map((m) => (
+            <button
+              key={`${m.frameIndex}:${m.label}`}
+              type="button"
+              onClick={() => onSeek(m.frameIndex)}
+              title={m.label}
+              aria-label={`Jump to ${m.label}`}
+              className="absolute top-0 h-5 w-3 -ml-1.5 flex justify-center"
+              style={{ left: `${totalFrames > 1 ? (m.frameIndex / (totalFrames - 1)) * 100 : 0}%` }}
+            >
+              <span className="w-1 h-5 rounded-full" style={{ background: NODE_FAILURE_COLOR }} />
+            </button>
+          ))}
           <div
             ref={thumbRef}
             className="absolute inset-x-0 top-0 h-5 pointer-events-none peer-focus-visible:[&>span]:ring-2 peer-focus-visible:[&>span]:ring-accent/40"

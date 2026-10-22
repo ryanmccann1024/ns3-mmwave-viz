@@ -9,6 +9,7 @@ import { NODE_COLORS } from '../../styles/tokens'
 import { MOTION } from '../../styles/motion'
 import { Button } from '../ui/Button'
 import { Skeleton } from '../ui/Skeleton'
+import { Loading } from '../ui/Spinner'
 import { Note } from '../ExperimentStatus'
 import { DecisionStrip } from './DecisionStrip'
 import { DecisionMore, DecisionSummary } from './DecisionDetail'
@@ -34,7 +35,8 @@ interface Props {
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col gap-3" aria-busy="true" aria-label="Reading decision telemetry">
+    <div className="flex flex-col gap-3" aria-busy="true">
+      <Loading label="Reading decision telemetry" />
       <div className="flex gap-1.5">
         {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="h-10 w-24 rounded-xl bg-ink/[0.06] animate-pulse-soft" />

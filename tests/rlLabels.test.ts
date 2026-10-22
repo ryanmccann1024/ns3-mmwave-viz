@@ -4,17 +4,70 @@ import type { Evaluation } from '../src/lib/experimentIndex.ts'
 import {
   baselineStatusLabel,
   experimentLabel,
+  gradedRewardExplanation,
   objectiveLabel,
   policyLabel,
   rewardLabel,
+  rewardComponentLabel,
+  rewardWeightLabel,
 } from '../src/lib/rlLabels.ts'
-import { TRAIL_COLORS, trailColor } from '../src/styles/tokens.ts'
+import {
+  NODE_TRAIL_PALETTE,
+  TRAIL_COLOR_DEFAULT,
+  TRAIL_COLORS,
+  trailColor,
+} from '../src/styles/tokens.ts'
 
 const evaluation = (label: string, components: string[]) =>
   ({
     label,
     rewardSchema: { components },
   }) as Evaluation
+
+test('Level 1 mission labels describe graded reward without the binary payoff suffix', () => {
+  const expected: Record<string, string> = {
+    connected_outdoor_area_fraction_v1: 'Connected area covered (0–1)',
+    team_target_distance_score_v1: 'Team target proximity (0–1)',
+    survivor_critical_delivery_fraction_v1: 'Survivor delivery ratio (0–1)',
+    jammed_traffic_delivery_fraction_v1: 'Delivery during jamming (0–1)',
+  }
+  for (const [component, label] of Object.entries(expected))
+    assert.equal(rewardLabel(evaluation('Level 1', [component])), label)
+})
+
+test('reward weights are multipliers and all four graded rewards explain calculation and timing', () => {
+  assert.equal(rewardWeightLabel(1), '×1')
+  assert.equal(rewardWeightLabel(-0.02), '×-0.02')
+  assert.equal(rewardWeightLabel(0), '×0')
+  const recovery = gradedRewardExplanation('survivor_critical_delivery_fraction_v1')!
+  assert.match(
+    recovery.calculation,
+    /critical traffic delivered ÷ requested between surviving nodes/
+  )
+  assert.match(recovery.calculation, /Failed-node traffic excluded/)
+  assert.match(recovery.example, /70%.*0\.70/)
+  assert.match(recovery.timing, /Fully post-failure windows only; otherwise 0.*No demand/)
+  const jamming = gradedRewardExplanation('jammed_traffic_delivery_fraction_v1')!
+  assert.match(jamming.calculation, /total traffic delivered ÷ total traffic requested/)
+  assert.match(jamming.timing, /fully after emission starts only; otherwise 0.*No demand/)
+  const coverage = gradedRewardExplanation('connected_outdoor_area_fraction_v1')!
+  assert.match(
+    coverage.calculation,
+    /largest connected peer group.*total outdoor area.*Buildings excluded/
+  )
+  const investigation = gradedRewardExplanation('team_target_distance_score_v1', {
+    component_details: {
+      team_target_distance_score_v1: { contract: { mission: { team_radius_m: 75 } } },
+    },
+  })!
+  assert.match(
+    investigation.calculation,
+    /mean distance beyond the 75 m target radius ÷ field diagonal/
+  )
+  assert.match(investigation.example, /20%.*0\.80/)
+  assert.match(investigation.timing, /no available peers/i)
+  assert.equal(gradedRewardExplanation('level0_recovery_v1'), null)
+})
 
 test('replay labels distinguish reward variants using the saved schema', () => {
   assert.equal(rewardLabel(evaluation('healthy-o1-binary', ['service_success'])), 'Binary +1/−1')
@@ -97,12 +150,36 @@ test('baseline policies, objectives and statuses have labels', () => {
 })
 
 test('baseline policies have distinct trail colours', () => {
-  assert.equal(trailColor('geometric'), '#0d9488')
-  assert.equal(trailColor('optimization'), '#ca8a04')
-  assert.equal(trailColor('zzz'), '#475569')
-  const known = ['model', 'hold', 'random_valid', 'geometric', 'optimization'].map(
-    (p) => TRAIL_COLORS[p]
-  )
+  assert.equal(trailColor('zzz'), TRAIL_COLOR_DEFAULT)
+  const policies = ['model', 'hold', 'random_valid', 'scripted', 'geometric', 'optimization']
+  const known = policies.map((p) => TRAIL_COLORS[p])
   assert.ok(known.every(Boolean))
-  assert.equal(new Set(known).size, known.length)
+  assert.equal(new Set([...known, TRAIL_COLOR_DEFAULT]).size, known.length + 1)
+  // ghosts of other policies never share a colour with a live replay node's trail
+  for (const p of policies.filter((p) => p !== 'model')) {
+    assert.ok(!NODE_TRAIL_PALETTE.includes(trailColor(p)), p)
+  }
+})
+
+test('Phase 3 component names describe the measured variable', () => {
+  for (const [id, expected] of Object.entries({
+    available_peer_travel_fraction_v1: 'Actual travel ÷ permitted travel',
+    worst_peer_target_proximity_v1: 'Farthest peer target proximity',
+    boundary_contact_fraction_v1: 'Fraction of peers contacting a wall',
+    weakest_active_delivery_fraction_v1: 'Least-served active peer delivery',
+    followers_investigator_then_target_proximity_v1: 'Followers approach investigator, then target',
+  }))
+    assert.equal(rewardComponentLabel(id), expected)
+})
+
+test('Coordinated mission labels remain short and explain exact saved formulas', () => {
+  const component = 'coordinated_investigation_adaptive_v1'
+  const formula = 'approach: 0.70 Q + 0.30 A; settle: 0.10 Q + 0.60 A + 0.20 K + 0.10 D'
+  const schema = { component_details: { [component]: { formula } } }
+  assert.equal(rewardComponentLabel(component, schema), 'Approach then establish (adaptive)')
+  const description = gradedRewardExplanation(component, schema)
+  assert.equal(description?.calculation, formula)
+  assert.match(description?.example ?? '', /100 m/)
+  assert.match(description?.timing ?? '', /30 seconds/)
+  assert.match(description?.timing ?? '', /5 seconds/)
 })

@@ -127,10 +127,15 @@ export function TrainingInsights({ run, catalog }: { run: TrainingRun; catalog?:
           value={change === null ? 'n/a' : `${change >= 0 ? '+' : ''}${shortNumber(change)}`}
           label="Return gain"
         />
-        <Tile
-          value={shortNumber(bestCheckpoint ?? run.bestMeanReward)}
-          label="Best checkpoint eval"
-        />
+        {bestCheckpoint === null && run.bestMeanReward === null && run.savedModel !== 'best' ? (
+          // No periodic evaluation picked a best checkpoint: only the final model exists
+          <Tile value={run.savedModel === 'final' ? 'Final' : 'n/a'} label="Saved model" />
+        ) : (
+          <Tile
+            value={shortNumber(bestCheckpoint ?? run.bestMeanReward)}
+            label="Best checkpoint eval"
+          />
+        )}
       </div>
 
       <EpisodeMeanRewardChart points={episodeCurve} seedCount={runs.length} />

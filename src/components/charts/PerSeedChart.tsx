@@ -17,6 +17,7 @@ import { AXIS, GRID } from './chartStyle'
 import { Legend } from './RlCharts'
 import { policyLabel } from '../../lib/rlLabels'
 import { Segmented } from '../ui/Segmented'
+import { missionObjective } from '../../lib/missionObjective'
 
 interface Point {
   x: number
@@ -45,7 +46,8 @@ const SLOT_WIDTH = 0.5
 /** One dot per policy per seed: shows whether a policy wins consistently or on one seed */
 export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
   const [metric, setMetric] = useState<string>(
-    metricKeys.includes('delivery_ratio') ? 'delivery_ratio' : 'return'
+    missionObjective(evaluation)?.metric ??
+      (metricKeys.includes('delivery_ratio') ? 'delivery_ratio' : 'return')
   )
   const seeds = useMemo(
     () => [...new Set(evaluation.episodes.map((e) => e.seed))].sort((a, b) => a - b),
@@ -98,7 +100,9 @@ export function PerSeedChart({ evaluation, metricKeys, label }: Props) {
   for (let t = yMin; t <= yMax + step / 2; t += step) yTicks.push(Number(t.toPrecision(12)))
 
   // Ratios read as percentages; returns stay as numbers
-  const ratio = metric !== 'return' && lo >= 0 && hi <= 1
+  const ratio =
+    /ratio|fraction|coverage|delivery|connectivity|success|recovery_sustained_final/.test(metric) &&
+    !/_s$|_m$|_mbit$/.test(metric)
   const formatY = (v: number) => (ratio ? `${Math.round(v * 100)}%` : shortNumber(v))
 
   if (seeds.length === 0) return null

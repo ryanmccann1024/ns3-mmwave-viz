@@ -2,9 +2,10 @@ import type { ReactNode } from 'react'
 import type { Workspace } from '../../hooks/useWorkspace'
 import { BrandMark } from '../ui/BrandMark'
 import { Button } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { MOTION } from '../../styles/motion'
 
-export type Section = 'home' | 'runs' | 'experiments'
+export type Section = 'home' | 'runs' | 'experiments' | 'folders'
 
 interface Props {
   active: Section
@@ -27,6 +28,7 @@ const ICONS: Record<Section, ReactNode> = {
       <path d="M19 19v-6" />
     </>
   ),
+  folders: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
 }
 
 function Icon({ children, className }: { children: ReactNode; className?: string }) {
@@ -106,6 +108,12 @@ export function NavRail({ active, onNavigate, workspace }: Props) {
           active={active === 'experiments'}
           onClick={() => onNavigate('experiments')}
         />
+        <NavItem
+          section="folders"
+          label="Folders"
+          active={active === 'folders'}
+          onClick={() => onNavigate('folders')}
+        />
       </nav>
 
       <button
@@ -151,7 +159,16 @@ export function NavRail({ active, onNavigate, workspace }: Props) {
           disabled={workspace.loadingDir}
           className="w-full"
         >
-          {hasFolder ? 'Change folder' : 'Open folder'}
+          {workspace.loadingDir ? (
+            <span className="flex items-center justify-center gap-2">
+              <Spinner size="sm" />
+              Loading
+            </span>
+          ) : hasFolder ? (
+            'Change folder'
+          ) : (
+            'Open folder'
+          )}
         </Button>
       </div>
     </aside>

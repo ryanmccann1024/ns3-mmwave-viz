@@ -9,9 +9,6 @@ export interface ResultCatalog {
   getFile(path: string): Promise<File | null>
 }
 
-/** Upper bound on files collected by a directory-handle walk. */
-export const MAX_CATALOG_ENTRIES = 50_000
-
 const READER_FILE_NAMES = new Set([
   'links.csv',
   'positions.csv',
@@ -33,6 +30,28 @@ const READER_FILE_NAMES = new Set([
   'evaluations.npz',
   'baseline_manifest.json',
   'baseline-plan.json',
+  'campaign_resolved.json',
+  'campaign_status.json',
+  'final_models.json',
+  'mission_scenario.json',
+  'mission_review.json',
+  'phase-one.json',
+  'phase-two.json',
+  'phase-three.json',
+  'phase-five.json',
+  'phase-six.json',
+  'phase-four.json',
+  'phase_one_report.json',
+  'phase_two_report.json',
+  'phase_three_report.json',
+  'phase_comparison.json',
+  'phase_five_report.json',
+  'phase_six_report.json',
+  'phase_four_report.json',
+  'scenario_check_metrics.json',
+  'reward_audit.json',
+  'selected_profile.json',
+  'online_manifest.json',
 ])
 
 export function isReaderFileName(name: string): boolean {
@@ -56,6 +75,10 @@ export function isTrainRolloutDirectory(segments: string[]): boolean {
  */
 export function isCatalogFile(segments: string[]): boolean {
   const name = segments[segments.length - 1] ?? ''
+  // A run's archived inputs/run.ini holds the channel settings the jamming map needs;
+  // other run.ini copies (source-inputs, planner trees) stay out
+  if (name === 'run.ini')
+    return segments[segments.length - 2] === 'inputs' && !isTrainRolloutDirectory(segments)
   if (!isReaderFileName(name)) return false
   return name === 'rl_episode.json' || !isTrainRolloutDirectory(segments)
 }
@@ -133,30 +156,29 @@ export async function catalogFromDirectoryHandle(
   handle: FileSystemDirectoryHandle
 ): Promise<ResultCatalog> {
   const sources = new Map<string, () => Promise<File | null>>()
-  let truncated = false
-  // Iterative walk: names and handles only, no getFile() here
+  // Index every reader path. A global file cap can hide whole experiments later
+  // in the walk; names and handles stay cheap and file contents remain lazy.
   const pending: { dir: FileSystemDirectoryHandle; prefix: string }[] = [
     { dir: handle, prefix: '' },
   ]
-  while (pending.length && !truncated) {
+  while (pending.length) {
     const { dir, prefix } = pending.pop()!
     for await (const [entryName, entry] of dir) {
       const path = prefix ? `${prefix}/${entryName}` : entryName
       if (entry.kind === 'directory') {
         if (!entryName.startsWith('.'))
-          pending.push({ dir: entry as FileSystemDirectoryHandle, prefix: path })
+          pending.push({
+            dir: entry as FileSystemDirectoryHandle,
+            prefix: path,
+          })
         continue
       }
       if (normalizeRelPath(path) !== path || !isCatalogFile(path.split('/'))) continue
-      if (sources.size >= MAX_CATALOG_ENTRIES) {
-        truncated = true
-        break
-      }
       const fileHandle = entry as FileSystemFileHandle
       sources.set(path, () => fileHandle.getFile())
     }
   }
-  return makeCatalog(handle.name, sources, truncated)
+  return makeCatalog(handle.name, sources)
 }
 
 function outputsUrl(path: string): string {

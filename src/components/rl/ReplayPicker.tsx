@@ -1,3 +1,4 @@
+import { shortEvaluationTitle } from '../../lib/missionComparison'
 import { useState } from 'react'
 import type { Episode, Evaluation } from '../../lib/experimentIndex'
 import { policyLabel, rewardLabel } from '../../lib/rlLabels'
@@ -32,6 +33,16 @@ export function ReplayPicker({ evaluations, current, onOpen, opening }: Props) {
   const [chosen, setChosen] = useState(current.evaluationKey)
   const currentEvaluation = ready.find((e) => e.key === current.evaluationKey)
   const evaluation = ready.find((e) => e.key === chosen) ?? currentEvaluation ?? ready[0]
+  // Picking a variant plays it straight away: the same policy and seed when it has them,
+  // else its model on this seed, else its first playable replay
+  const counterpart = (e: Evaluation) => {
+    const playable = e.episodes.filter((episode) => episode.playable)
+    return (
+      playable.find((x) => x.policy === current.policy && x.seed === current.seed) ??
+      playable.find((x) => x.policy === 'model' && x.seed === current.seed) ??
+      playable[0]
+    )
+  }
   const seedLabel = (e: Evaluation) =>
     ready.filter((x) => x.label === e.label).length > 1 && e.trainingSeed !== null
       ? ` · seed ${e.trainingSeed}`
@@ -42,14 +53,15 @@ export function ReplayPicker({ evaluations, current, onOpen, opening }: Props) {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-xl font-semibold tracking-tight text-ink-title">
-            {currentEvaluation ? variantTitle(currentEvaluation.label) : 'Replay'}
+            {currentEvaluation ? variantTitle(shortEvaluationTitle(currentEvaluation)) : 'Replay'}
           </h2>
-          <div className="mt-1 text-base text-ink-2">
-            {policyLabel(current.policy)} · evaluation seed {current.seed}
-          </div>
-          {currentEvaluation && (
-            <div className="text-base text-ink-2">{rewardLabel(currentEvaluation)}</div>
-          )}
+          {/* Policy and seed are tiles below; the reward is named only when the title lacks it */}
+          {currentEvaluation &&
+            !variantTitle(shortEvaluationTitle(currentEvaluation))
+              .toLowerCase()
+              .includes(rewardLabel(currentEvaluation).toLowerCase()) && (
+              <div className="mt-1 text-base text-ink-2">{rewardLabel(currentEvaluation)}</div>
+            )}
         </div>
         {ready.length > 0 && (
           <Button variant="secondary" onClick={() => setOpen((v) => !v)}>
@@ -67,7 +79,12 @@ export function ReplayPicker({ evaluations, current, onOpen, opening }: Props) {
                   key={e.key}
                   type="button"
                   aria-pressed={e.key === evaluation.key}
-                  onClick={() => setChosen(e.key)}
+                  onClick={() => {
+                    setChosen(e.key)
+                    const next = counterpart(e)
+                    if (next && !(next.dir === current.dir && e.key === current.evaluationKey))
+                      onOpen(next)
+                  }}
                   className={`h-11 px-4 text-left text-base truncate ${MOTION.colors} ${
                     e.key === evaluation.key
                       ? 'bg-accent-wash text-accent-ink font-semibold'

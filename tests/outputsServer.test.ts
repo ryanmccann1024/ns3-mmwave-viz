@@ -47,7 +47,7 @@ test('serves only regular files contained in the root', (t) => {
   assert.equal(resolveServedPath(root, 'exp/nope.csv').status, 404)
 })
 
-test('listing is filtered, skips train rollouts and symlinks, and is capped', (t) => {
+test('listing is filtered, skips train rollouts and symlinks, and supports an explicit cap', (t) => {
   const { base, root } = makeTree()
   t.after(() => fs.rmSync(base, { recursive: true, force: true }))
 
@@ -67,4 +67,30 @@ test('listing is filtered, skips train rollouts and symlinks, and is capped', (t
   const capped = listOutputs(root, 2)
   assert.equal(capped.paths.length, 2)
   assert.equal(capped.truncated, true)
+})
+
+test('default server listing includes experiments beyond 50,000 replay files', (t) => {
+  const root = path.join(os.tmpdir(), 'virtual-large-outputs')
+  const entry = (name: string, directory: boolean) => ({
+    name,
+    isDirectory: () => directory,
+    isFile: () => !directory,
+  })
+  t.mock.method(fs, 'readdirSync', (dir: string) => {
+    if (dir === root)
+      return [
+        ...Array.from({ length: 50_001 }, (_, i) => entry(`replay-${i}`, true)),
+        entry('zz-final-experiment', true),
+      ]
+    return [
+      entry(
+        path.basename(dir) === 'zz-final-experiment' ? 'experiment_plan.json' : 'positions.csv',
+        false
+      ),
+    ]
+  })
+  const listing = listOutputs(root)
+  assert.equal(listing.paths.length, 50_002)
+  assert.equal(listing.truncated, false)
+  assert.equal(listing.paths.at(-1), 'zz-final-experiment/experiment_plan.json')
 })

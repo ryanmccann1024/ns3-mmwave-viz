@@ -15,6 +15,8 @@ export interface NodeState {
   z: number
   nodeType: NodeType
   active: boolean
+  /** original node ID from nodes.json (e.g. "drone-1"), when the roster could be checked */
+  name?: string
 }
 
 export interface LinkState {
@@ -93,10 +95,14 @@ export interface JammerState {
   intervals: { start: number; end: number }[]
   targetFreqMhz: number[]
   txPowerDbm: number
+  /** antenna gain added to the transmit power (dBi) */
+  txArrayGainDbi: number
   dutyCycle: number
   maxRangeM: number
   beamwidthDeg: number
   azimuthDeg: number
+  /** beam pointing from straight up: 0 = up, 90 = horizontal, 180 = down */
+  zenithDeg: number
 }
 
 export interface SimFrame {

@@ -5,6 +5,8 @@ import { experimentLabel } from '../../lib/rlLabels'
 import { ExperimentCard, TrainingCard } from './ExperimentCard'
 import { ListEmpty, NoFolder } from './shared'
 import { MOTION } from '../../styles/motion'
+import { Loading } from '../ui/Spinner'
+import { Button } from '../ui/Button'
 
 interface Props {
   workspace: Workspace
@@ -68,8 +70,8 @@ export function ExperimentsPage({ workspace, onOpenGroup, onOpenTrainingRun }: P
         <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-ink-title">
           RL experiments
         </h1>
-        {!empty && (
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          {!empty && (
             <label className="relative flex-1 sm:flex-none sm:w-64">
               <span className="sr-only">Filter experiments</span>
               <SearchIcon />
@@ -80,17 +82,32 @@ export function ExperimentsPage({ workspace, onOpenGroup, onOpenTrainingRun }: P
                 className={`${CONTROL} pl-10 pr-4 placeholder:text-ink-2/60`}
               />
             </label>
-          </div>
-        )}
+          )}
+          <Button
+            variant="secondary"
+            disabled={workspace.loadingDir}
+            onClick={() => void workspace.refresh()}
+          >
+            Refresh
+          </Button>
+        </div>
       </header>
 
-      {!workspace.dirName && !workspace.loadingDir ? (
+      {workspace.loadingDir ? (
+        <div className={`glass px-6 py-10 flex justify-center ${MOTION.enterFade}`}>
+          <Loading label="Loading simulations" />
+        </div>
+      ) : !workspace.dirName ? (
         <NoFolder what="RL experiments" onOpen={workspace.openFolder} />
       ) : (
         (empty || shown.length === 0) && (
           <div className={`glass ${MOTION.enterFade}`}>
             <ListEmpty>
-              {empty ? 'No RL experiments or training runs yet.' : 'Nothing matches that filter.'}
+              {!empty
+                ? 'Nothing matches that filter.'
+                : workspace.includedFolders.length === 0
+                  ? 'No folders chosen. Pick them under Folders.'
+                  : 'No RL experiments in the chosen folders.'}
             </ListEmpty>
           </div>
         )

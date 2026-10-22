@@ -1,13 +1,23 @@
-# NYU Mesh Viz
+# NYU Mesh Viz {#viz_readme}
 
 A browser-based 3D visualizer for ns-3 wireless network simulations, built with React + Three.js.
 
-## Prerequisites
+## Mission experiments {#viz_readme_missions}
+
+Numbered campaigns such as `10-16-2` and `10-16-3` appear as separate projects under **RL experiments**, each with a **Main** group and one page per physical scenario. Training, checkpoint validation and baseline caches remain available as files without appearing as separate experiments. Refresh results as a running campaign completes stages.
+
+Scenario cards show the best individual reward/PPO/mode variant for the mission: final coverage with a service floor, team investigation completion, sustained recovery, or jammer service-disruption seconds. They average seeds within that variant, not different reward definitions. Confirmation configurations take precedence once their results are available.
+
+The Results tab includes mission and radio timelines for service, LOS, SINR, coverage, arrival, remaining target distance and actual travel. LOS/SINR exclude unavailable peers. The How it works tab explains reward terms and coefficient changes from Dynamic Balance. Shared baseline paths are reused; counterfactual rewards are labeled and loaded only with an exact reward schema and seed match.
+
+The `10-16-3` screen has no online variants. Only selected configurations receive confirmation training and paired frozen sampled/online operation. Training seeds are shown separately within the same configuration card. Planned or running comparisons remain visible while results are pending.
+
+## Prerequisites {#viz_readme_prerequisites}
 
 - Node.js 18+
 - npm 9+
 
-## Getting Started
+## Getting Started {#viz_readme_getting_started}
 
 ```bash
 npm install
@@ -16,7 +26,7 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-## Data Format
+## Data Format {#viz_readme_data_format}
 
 The visualizer reads two CSV files produced by the ns-3 simulation:
 
@@ -78,13 +88,13 @@ outputs/
           buildings.json   (optional)
 ```
 
-## Loading a Simulation
+## Loading a Simulation {#viz_readme_loading}
 
 1. Click **Open Data Folder** and navigate to your `data/` directory.
 2. The visualizer discovers all valid simulation runs grouped by date.
 3. Click any run to load it — the 3D canvas appears immediately.
 
-## Reading RL experiment results
+## Reading RL experiment results {#viz_readme_rl_results}
 
 The visualizer can also read saved local or fetched RL experiments. It is a reader only: it does not train,
 evaluate, compare, submit or fetch jobs. Results are produced with the
@@ -148,7 +158,7 @@ the mask in record n−1, and that is the one shown next to action n ("pre-actio
 n−1)"). The panel selects the saved interval containing the playback time; if telemetry was
 sampled and no saved interval covers that time, it says so rather than displaying an older action.
 
-### Decisions tab
+### Decisions tab {#viz_readme_decisions}
 
 Evaluation episodes have a **Decisions** tab beside Episode / Overview / Nodes / Log (on narrow
 screens the same tabs sit below the scene). It shows one chip per policy slot, a timeline over the
@@ -180,7 +190,7 @@ episodes (context and action only, no invented model preference), is a required 
 tab once the simulator's schema is published. Episodes recorded with the sidecar off simply show
 "not saved".
 
-## Controls
+## Controls {#viz_readme_controls}
 
 | Control | Action |
 |---------|--------|
@@ -196,7 +206,7 @@ tab once the simulator's schema is published. Episodes recorded with the sidecar
 | Click empty space | Deselect |
 | Link threshold input | Filter connected vs disconnected links |
 
-## Understanding the Visualization
+## Understanding the Visualization {#viz_readme_understanding}
 
 ### Node Shapes
 
@@ -225,7 +235,7 @@ tab once the simulator's schema is published. Episodes recorded with the sidecar
 | Orange (dashed) | NLOS connected |
 | Red (dashed) | Disconnected (below threshold) |
 
-## Terminal / Event Log
+## Terminal / Event Log {#viz_readme_event_log}
 
 A collapsible terminal at the bottom of the screen logs simulation events in real time:
 
@@ -235,7 +245,7 @@ A collapsible terminal at the bottom of the screen logs simulation events in rea
 
 The terminal is hidden on small screens (< 640px wide).
 
-## Linting & Code Style
+## Linting & Code Style {#viz_readme_linting}
 
 ```bash
 npm run lint        # ESLint (zero warnings enforced)
@@ -247,7 +257,7 @@ npm test            # Unit tests for the result-reading libraries (Node 22.6+)
 
 A Husky pre-commit hook runs `lint-staged` on staged `.ts`/`.tsx` files before every commit.
 
-## Architecture Overview
+## Architecture Overview {#viz_readme_architecture}
 
 ```
 src/
@@ -287,7 +297,17 @@ src/
 └── App.tsx                      Layout, logging wiring, responsive breakpoints
 ```
 
-## Contributing
+## Documentation {#viz_readme_docs}
+
+Generate the Doxygen site (the authored pages under `docs/` plus this README) and open it:
+
+```bash
+cd docs && doxygen Doxyfile && open html/index.html   # Linux: xdg-open html/index.html
+```
+
+Tested tool versions and the theme are recorded in `docs/generating-the-docs.md`.
+
+## Contributing {#viz_readme_contributing}
 
 1. Fork and clone the repo
 2. `npm install`

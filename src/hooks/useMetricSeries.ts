@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { SimFrame, LinkState, FlowState } from '../types'
 
-export type MetricId = 'sinr' | 'rxPower' | 'capacity' | 'throughput' | 'latency' | 'mcs'
+export type MetricId = 'sinr' | 'los' | 'rxPower' | 'capacity' | 'throughput' | 'latency' | 'mcs'
 
 export interface MetricConfig {
   id: MetricId
@@ -12,6 +12,7 @@ export interface MetricConfig {
 
 export const METRICS: MetricConfig[] = [
   { id: 'sinr', label: 'SINR', unit: 'dB', source: 'link' },
+  { id: 'los', label: 'Line of sight', unit: '1 LOS / 0 NLOS', source: 'link' },
   { id: 'rxPower', label: 'RX Power', unit: 'dBm', source: 'rxPower' },
   { id: 'capacity', label: 'Capacity', unit: 'Mbps', source: 'link' },
   { id: 'throughput', label: 'Throughput', unit: 'Mbps', source: 'flow' },
@@ -28,6 +29,8 @@ function extractLinkValue(link: LinkState, metricId: MetricId): number | undefin
   switch (metricId) {
     case 'sinr':
       return link.sinr
+    case 'los':
+      return link.condition === 'LOS' ? 1 : 0
     case 'capacity':
       return link.capacityMbps
     default:
@@ -55,7 +58,9 @@ export function useMetricSeries(frames: SimFrame[], metricId: MetricId): MetricS
 
     for (const frame of frames) {
       if (config.source === 'link') {
+        const active = new Set(frame.nodes.filter((node) => node.active).map((node) => node.id))
         for (const link of frame.links) {
+          if (metricId === 'los' && (!active.has(link.nodeA) || !active.has(link.nodeB))) continue
           const val = extractLinkValue(link, metricId)
           if (val === undefined || isNaN(val)) continue
           const key = `${link.nodeA}-${link.nodeB}`
@@ -119,6 +124,7 @@ export function useAvailableMetrics(frames: SimFrame[]): Set<MetricId> {
     const sample = frames.slice(0, Math.min(5, frames.length))
     for (const frame of sample) {
       if (frame.links.some((l) => l.sinr !== undefined)) available.add('sinr')
+      if (frame.links.length > 0) available.add('los')
       if (frame.links.some((l) => l.capacityMbps !== undefined)) available.add('capacity')
       if (frame.flows.length > 0) {
         available.add('throughput')

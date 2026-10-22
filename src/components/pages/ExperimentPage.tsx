@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ResultCatalog } from '../../lib/resultCatalog'
 import type {
   EvalBaselineInfo,
@@ -12,11 +12,20 @@ import { loadTrainingSummary } from '../../lib/experimentIndex'
 import { formatNumber } from '../../lib/comparisonView'
 import { folderLabel, shortNumber as fmt } from '../../lib/format'
 import { trailColor } from '../../styles/tokens'
+import { MissionComparison } from '../rl/MissionComparison'
+import {
+  ALL_FILTERS,
+  matchesMissionFilters,
+  executionMode,
+  shortEvaluationTitle,
+} from '../../lib/missionComparison'
 import { PageHeader } from '../ui/PageHeader'
 import type { Crumb } from '../ui/Breadcrumbs'
 import { Panel } from '../ui/Panel'
 import { Segmented } from '../ui/Segmented'
 import { Disclosure } from '../ui/Disclosure'
+import { PhasePill } from '../ui/PhasePill'
+import { missionObjective, missionSummary, objectiveValue } from '../../lib/missionObjective'
 import { ComparisonSection } from '../ComparisonTable'
 import { PerSeedChart } from '../charts/PerSeedChart'
 import { EvaluationInsights } from '../rl/EvaluationInsights'
@@ -29,12 +38,14 @@ import { ExperimentStatus, Note, Section as StatusSection, StateBadge } from '..
 import {
   baselineStatusLabel,
   experimentLabel,
+  modelSelectionLabel,
   objectiveLabel,
   policyLabel,
   rewardLabel,
 } from '../../lib/rlLabels'
 import { MOTION } from '../../styles/motion'
 import { Skeleton } from '../ui/Skeleton'
+import { Loading, Spinner } from '../ui/Spinner'
 import { BaselineProvenance, BaselineSetupLine, sourceMismatchKeys } from './BaselineInfo'
 
 interface Props {
@@ -53,6 +64,8 @@ interface Props {
   /** training run folders in the open folder, to find this evaluation's model */
   trainingRoots: string[]
   onOpenTrainingRun: (root: string) => void
+  /** the same scenario at other team sizes, switched in place; the page is titled without the size */
+  sizes?: { family: string; peers: number[]; value: number; onChange: (peers: number) => void }
 }
 
 export type ExperimentTab = 'results' | 'learning' | 'episodes' | 'setup' | 'details'
@@ -61,13 +74,55 @@ const MAX_METRIC_COLUMNS = 4
 
 const evalTitle = (e: Evaluation) =>
   e.trainingSeed === null
-    ? `${variantTitle(e.label)} · baselines only`
-    : `${variantTitle(e.label)} · training seed ${e.trainingSeed}`
+    ? `${variantTitle(shortEvaluationTitle(e))} · baselines only`
+    : `${variantTitle(shortEvaluationTitle(e))} · training seed ${e.trainingSeed}`
 
 const ACRONYMS = new Set(['los', 'nlos', 'sinr', 'snr', 'mcs', 'rx', 'tx', 'uav', 'bs'])
 
+/** Short names for the mission metrics, so tabs and table headers stay one line */
+const METRIC_NAMES: Record<string, string> = {
+  reactive_recovery_success: 'Reactive recovery',
+  last_minute_travel_m: 'Final minute travel',
+  active_post_failure_hold_fraction: 'Post-failure hold',
+  post_failure_service_dip: 'Service after failure',
+  furthest_peer_target_distance_m: 'Furthest from target',
+  blocked_active_slot_fraction: 'Blocked move share',
+  delivery_ratio: 'Delivery',
+  travel_m_total: 'Travel',
+  final_minute_survivor_delivery: 'Final service',
+  final_minute_coverage: 'Final coverage',
+  investigation_success: 'Completed',
+  investigation_completion_s: 'Completion time',
+  team_arrival_fraction_final: 'Team at target',
+  goal_coverage_final: 'Target coverage',
+  recovery_sustained_final: 'Sustained recovery',
+  recovery_success: 'Recovered',
+  recovery_delay_s: 'Recovery delay',
+  post_failure_survivor_delivery: 'Post-failure service',
+  survivor_outage_s: 'Outage time',
+  post_failure_travel_m: 'Post-failure travel',
+  post_failure_original_demand_delivery: 'Original demand',
+  jammer_disruption_s: 'Disruption',
+  // scenario-check outcomes from the phase report, after the case's event gate
+  event_outage_s: 'Outage after event',
+  pre_event_delivery: 'Service before event',
+  post_event_delivery: 'Service after event',
+  event_completed_ever: 'Event recovered',
+  event_completion_s: 'Event recovered at',
+  event_delay_s: 'Event recovery delay',
+  event_sustained_through_end: 'Event sustained',
+  post_jammer_delivery_ratio: 'After jamming',
+  recovery_time_s: 'Recovery time',
+  active_mean_sinr_db: 'Mean SINR',
+  coverage_gain_final: 'Coverage gain',
+  coverage_fraction_final: 'Coverage',
+  coverage_fraction_mean: 'Mean coverage',
+  worst_node_delivery_fraction: 'Worst node',
+}
+
 /** delivery_ratio -> Delivery ratio, los_fraction -> LOS fraction */
 const humanize = (key: string) =>
+  METRIC_NAMES[key] ??
   key
     .split('_')
     .map((w, i) =>
@@ -150,7 +205,75 @@ function useMetricKeys(evaluation: Evaluation) {
   return useMemo(() => {
     const keys = new Set<string>()
     for (const e of evaluation.episodes) for (const k of Object.keys(e.metrics ?? {})) keys.add(k)
-    return [...keys].slice(0, MAX_METRIC_COLUMNS)
+    const objective = missionObjective(evaluation)
+    const mission = objective
+      ? { kind: objective.kind }
+      : (evaluation.contract?.mission as { kind?: string } | undefined)
+    const priority =
+      mission?.kind === 'investigation'
+        ? [
+            'investigation_success',
+            'team_arrival_fraction_final',
+            'team_distance_remaining_m',
+            'furthest_peer_target_distance_m',
+            'last_minute_travel_m',
+            'travel_m_total',
+            'final_minute_survivor_delivery',
+            'goal_coverage_final',
+            'investigation_completion_s',
+            'delivery_ratio',
+          ]
+        : mission?.kind === 'recovery'
+          ? [
+              'reactive_recovery_success',
+              'recovery_sustained_final',
+              'post_failure_service_dip',
+              'post_failure_travel_m',
+              'active_post_failure_hold_fraction',
+              'blocked_active_slot_fraction',
+              'final_minute_survivor_delivery',
+              'recovery_success',
+              'recovery_delay_s',
+              'post_failure_survivor_delivery',
+              'survivor_outage_s',
+              'post_failure_travel_m',
+              'final_minute_survivor_delivery',
+              'travel_m_total',
+              'post_failure_original_demand_delivery',
+            ]
+          : mission?.kind === 'jamming'
+            ? [
+                'jammer_disruption_s',
+                'event_outage_s',
+                'post_event_delivery',
+                'last_minute_travel_m',
+                'post_jammer_delivery_ratio',
+                'final_minute_survivor_delivery',
+                'recovery_time_s',
+                'active_mean_sinr_db',
+                'travel_m_total',
+              ]
+            : [
+                'coverage_gain_final',
+                'last_minute_travel_m',
+                'final_minute_coverage',
+                'coverage_fraction_final',
+                'coverage_fraction_mean',
+                'delivery_ratio',
+                'worst_node_delivery_fraction',
+                'travel_m_total',
+              ]
+    const scalar = [...keys].filter((key) =>
+      evaluation.episodes.some(
+        (episode) => typeof episode.metrics?.[key] === 'number' || episode.metrics?.[key] === null
+      )
+    )
+    return mission
+      ? [
+          ...[...new Set(priority)].filter((key) => scalar.includes(key)),
+          ...scalar.filter((key) => !priority.includes(key)),
+        ]
+      : scalar.slice(0, MAX_METRIC_COLUMNS)
   }, [evaluation])
 }
 
@@ -191,10 +314,13 @@ function PolicyResults({ evaluation }: { evaluation: Evaluation }) {
   )
   const returns = rows.map((r) => r.returnMean).filter((v): v is number => v !== null)
   const best = returns.length ? Math.max(...returns) : null
+  const objective = missionObjective(evaluation)
+  const secondary =
+    objective && objective.secondary !== objective.metric ? objective.secondary : null
 
   return (
     <Section
-      title={`Policies · ${variantTitle(evaluation.label)}`}
+      title={`Policies · ${variantTitle(shortEvaluationTitle(evaluation))}`}
       aside={
         rows.length > 0 && (
           <Button variant="secondary" onClick={() => setTableOpen((open) => !open)}>
@@ -205,6 +331,9 @@ function PolicyResults({ evaluation }: { evaluation: Evaluation }) {
     >
       {evaluation.state !== 'ok' && evaluation.message && (
         <Note tone={evaluation.state === 'failed' ? 'error' : 'warn'}>{evaluation.message}</Note>
+      )}
+      {evaluation.episodes.some((e) => e.rewardRescored) && (
+        <p className="text-base text-ink-2">Baseline rewards are rescored with this reward.</p>
       )}
       {rows.length === 0 ? (
         <div className="glass p-6 text-base text-ink-2">
@@ -224,8 +353,18 @@ function PolicyResults({ evaluation }: { evaluation: Evaluation }) {
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Figure value={pct1(row.metricMeans.delivery_ratio)} label="Delivered" />
-                <Figure value={fmt(row.returnMean)} label="Return" />
+                <Figure
+                  value={
+                    objective
+                      ? objectiveValue(row.metricMeans[objective.metric], objective)
+                      : pct1(row.metricMeans.delivery_ratio)
+                  }
+                  label={objective?.label ?? 'Delivered'}
+                />
+                <Figure
+                  value={secondary ? pct1(row.metricMeans[secondary]) : fmt(row.returnMean)}
+                  label={secondary ? objective!.secondaryLabel : 'Return'}
+                />
               </div>
               {row.completed < row.total && (
                 <div className="text-base text-ink-2">
@@ -301,10 +440,68 @@ function SeedComparison({ evaluation }: { evaluation: Evaluation }) {
   return (
     <Section title="Seed by seed">
       <div className="glass p-6">
-        <PerSeedChart evaluation={evaluation} metricKeys={metricKeys} label={humanize} />
+        <PerSeedChart
+          evaluation={evaluation}
+          metricKeys={metricKeys.slice(0, 6)}
+          label={humanize}
+        />
       </div>
     </Section>
   )
+}
+
+interface VariantSummary {
+  label: string
+  title: string
+  /** the reward's name when the title does not already carry it */
+  reward: string | null
+  /** the mission's headline metric, e.g. Final service */
+  metricLabel: string
+  model: string
+  baseline: string
+  travel: string
+  pending: string | null
+}
+
+/** Seed-averaged headline numbers for one reward variant (all its training seeds) */
+function variantSummary(group: Evaluation[]): VariantSummary {
+  const evaluation = group[0]
+  const objective = missionObjective(evaluation)
+  const metric = objective?.metric ?? 'delivery_ratio'
+  const show = (v: number | null) => (objective ? objectiveValue(v, objective) : pct0(v))
+  const result = (policy: string, key: string) =>
+    mean(
+      group.map(
+        (entry) => policyRows(entry, [key]).find((row) => row.policy === policy)?.metricMeans[key]
+      )
+    )
+  const higher = objective?.higher ?? true
+  const baselines = evaluation.policies
+    .filter((policy) => policy !== 'model')
+    .map((policy) => result(policy, metric))
+    .filter((v): v is number => v !== null)
+  const travel = result('model', 'travel_m_total')
+  const modelValue = result('model', metric)
+  const title = evaluation.missionRewardTitle
+    ? `${evaluation.missionRewardTitle} · ${executionMode(evaluation)}`
+    : variantTitle(shortEvaluationTitle(evaluation))
+  const reward = rewardLabel(evaluation)
+  return {
+    label: evaluation.label,
+    title,
+    reward: evaluation.missionRewardTitle
+      ? (evaluation.missionPpoLabel ?? null)
+      : title.toLowerCase().includes(reward.toLowerCase())
+        ? null
+        : reward,
+    metricLabel: objective?.label ?? 'Model delivery',
+    model: show(modelValue),
+    baseline: show(
+      baselines.length ? (higher ? Math.max(...baselines) : Math.min(...baselines)) : null
+    ),
+    travel: travel === null ? '–' : `${Math.round(travel).toLocaleString()} m`,
+    pending: evaluation.state === 'ok' ? null : (evaluation.message ?? 'Comparison pending'),
+  }
 }
 
 function Figure({ value, label }: { value: string; label: string }) {
@@ -319,6 +516,139 @@ function Figure({ value, label }: { value: string; label: string }) {
 }
 
 /** One card per policy with its evaluation seeds as joined buttons; a click plays that replay */
+/** A policy's evaluation seeds as one joined button group; a click plays that replay */
+function SeedButtons({
+  policy,
+  episodes,
+  openingEpisode,
+  onOpenEpisode,
+}: {
+  policy: string
+  episodes: Episode[]
+  openingEpisode: Episode | null
+  onOpenEpisode: (episode: Episode) => void
+}) {
+  return (
+    <div className="flex rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-x divide-hairline">
+      {episodes.map((e) => {
+        const busy = openingEpisode === e
+        return (
+          <button
+            key={e.dir}
+            type="button"
+            onClick={() => onOpenEpisode(e)}
+            disabled={!e.playable || openingEpisode !== null}
+            title={e.playable ? `Play seed ${e.seed}` : (e.message ?? 'No playback files')}
+            aria-label={`Play ${policyLabel(policy)} on evaluation seed ${e.seed}`}
+            className={`flex-1 h-11 px-3 text-base font-medium tabular-nums ${MOTION.colors} ${
+              busy
+                ? 'bg-accent-wash text-accent-ink'
+                : e.playable
+                  ? 'text-ink hover:bg-accent-wash hover:text-accent-ink'
+                  : 'text-ink-2/50 cursor-not-allowed'
+            }`}
+          >
+            {busy ? (
+              <span className="flex items-center justify-center gap-2">
+                <Spinner size="sm" />
+                Opening
+              </span>
+            ) : (
+              e.seed
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const policyEpisodes = (evaluation: Evaluation, policy: string) =>
+  evaluation.episodes.filter((e) => e.policy === policy).sort((a, b) => a.seed - b.seed)
+
+/**
+ * The header's Watch in 3D: a menu of every policy's seeds for the chosen variant, so a
+ * replay opens without scrolling to the Watch in 3D tab
+ */
+function WatchMenu({
+  evaluation,
+  openingEpisode,
+  onOpenEpisode,
+}: {
+  evaluation: Evaluation | undefined
+  openingEpisode: Episode | null
+  onOpenEpisode: (episode: Episode) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: Event) => {
+      if (
+        event instanceof KeyboardEvent
+          ? event.key === 'Escape'
+          : !ref.current?.contains(event.target as Node)
+      )
+        setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', close)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', close)
+    }
+  }, [open])
+  const policies = evaluation
+    ? [...evaluation.policies]
+        .sort((a, b) => policyRank(a) - policyRank(b))
+        .filter((policy) => policyEpisodes(evaluation, policy).length > 0)
+    : []
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="secondary"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        disabled={policies.length === 0}
+      >
+        Watch in 3D
+      </Button>
+      {open && evaluation && (
+        <div
+          role="dialog"
+          aria-label="Choose a replay"
+          className={`absolute right-0 top-full mt-3 z-20 w-[min(30rem,calc(100vw-2rem))] flex flex-col rounded-2xl border border-hairline bg-white shadow-glass ${MOTION.enter}`}
+        >
+          <div className="px-6 pt-5 pb-4 border-b border-hairline text-lg font-semibold tracking-tight text-ink-title">
+            {variantTitle(shortEvaluationTitle(evaluation))}
+          </div>
+          <div className="px-6 pt-5 pb-6 flex flex-col gap-5">
+            {policies.map((policy) => (
+              <div key={policy} className="flex flex-col gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: trailColor(policy) }}
+                  />
+                  <span className="text-base font-semibold text-ink truncate">
+                    {policyLabel(policy)}
+                  </span>
+                </div>
+                <SeedButtons
+                  policy={policy}
+                  episodes={policyEpisodes(evaluation, policy)}
+                  openingEpisode={openingEpisode}
+                  onOpenEpisode={onOpenEpisode}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ReplayCards({
   evaluation,
   openingEpisode,
@@ -330,7 +660,7 @@ function ReplayCards({
 }) {
   const policies = [...evaluation.policies].sort((a, b) => policyRank(a) - policyRank(b))
   return (
-    <Section title={`Replays · ${variantTitle(evaluation.label)}`}>
+    <Section title={`Replays · ${variantTitle(shortEvaluationTitle(evaluation))}`}>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
         {policies.map((policy) => {
           const episodes = evaluation.episodes
@@ -352,32 +682,12 @@ function ReplayCards({
               ) : (
                 <div className="flex flex-col gap-2">
                   <div className="text-base font-medium text-ink-2">Evaluation seed</div>
-                  <div className="flex rounded-xl border border-hairline bg-white shadow-control overflow-hidden divide-x divide-hairline">
-                    {episodes.map((e) => {
-                      const busy = openingEpisode === e
-                      return (
-                        <button
-                          key={e.dir}
-                          type="button"
-                          onClick={() => onOpenEpisode(e)}
-                          disabled={!e.playable || openingEpisode !== null}
-                          title={
-                            e.playable ? `Play seed ${e.seed}` : (e.message ?? 'No playback files')
-                          }
-                          aria-label={`Play ${policyLabel(policy)} on evaluation seed ${e.seed}`}
-                          className={`flex-1 h-11 px-3 text-base font-medium tabular-nums ${MOTION.colors} ${
-                            busy
-                              ? 'bg-accent-wash text-accent-ink'
-                              : e.playable
-                                ? 'text-ink hover:bg-accent-wash hover:text-accent-ink'
-                                : 'text-ink-2/50 cursor-not-allowed'
-                          }`}
-                        >
-                          {busy ? 'Opening' : e.seed}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <SeedButtons
+                    policy={policy}
+                    episodes={episodes}
+                    openingEpisode={openingEpisode}
+                    onOpenEpisode={onOpenEpisode}
+                  />
                 </div>
               )}
             </div>
@@ -481,8 +791,13 @@ function TrainingSummaryView({ summary }: { summary: TrainingSummary }) {
     ['Training seed', formatNumber(summary.seed)],
     ['Status', summary.status ?? 'not recorded'],
     ['Algorithm', summary.algorithm ?? 'not recorded'],
-    ['Model used by this evaluation', summary.modelUsedByEval ?? 'not recorded'],
-    ['Best mean evaluation reward during training', formatNumber(summary.bestMeanReward)],
+    ['Model used by this evaluation', modelSelectionLabel(summary.modelUsedByEval)],
+    [
+      'Best mean evaluation reward during training',
+      summary.bestMeanReward === null
+        ? 'none: no best checkpoint was selected'
+        : formatNumber(summary.bestMeanReward),
+    ],
     ['Selection', summary.selection === null ? 'not recorded' : JSON.stringify(summary.selection)],
   ]
   if (summary.hyperparameters) {
@@ -530,7 +845,7 @@ function EvaluationDetails({
           ? 'not held-out'
           : 'not recorded',
     ],
-    ['Model', evaluation.modelSelection ?? 'not recorded'],
+    ['Model', modelSelectionLabel(evaluation.modelSelection)],
   ]
   if (evaluation.fetchTaskState) entries.push(['Fetch snapshot', evaluation.fetchTaskState])
   // Placement-baseline policies, in the evaluation's policy order
@@ -594,10 +909,12 @@ function EvaluationDetails({
         >
           <Disclosure title="Training summary">
             {training ? (
-              <TrainingSummaryView summary={training} />
+              <div className={MOTION.page}>
+                <TrainingSummaryView summary={training} />
+              </div>
             ) : (
-              <div role="status" aria-busy="true" aria-label="Reading training summary">
-                <span className="sr-only">Reading training summary…</span>
+              <div className="flex flex-col gap-4" aria-busy="true">
+                <Loading label="Reading training summary" size="sm" />
                 <Skeleton lines={3} />
               </div>
             )}
@@ -645,13 +962,17 @@ function LearningForEvaluation({
         }
       ></Section>
       {(!loaded || loaded.state === 'loading') && (
-        <div role="status" aria-busy="true" aria-label="Reading training run">
-          <span className="sr-only">Reading training run…</span>
+        <div className="flex flex-col gap-4" aria-busy="true">
+          <Loading label="Reading training run" />
           <Skeleton lines={3} />
         </div>
       )}
       {loaded?.state === 'error' && <Note tone="error">{loaded.message}</Note>}
-      {loaded?.state === 'ready' && <TrainingInsights run={loaded.value} catalog={catalog} />}
+      {loaded?.state === 'ready' && (
+        <div className={MOTION.page}>
+          <TrainingInsights run={loaded.value} catalog={catalog} />
+        </div>
+      )}
     </div>
   )
 }
@@ -673,21 +994,44 @@ export function ExperimentPage({
   onTab,
   trainingRoots,
   onOpenTrainingRun,
+  sizes,
 }: Props) {
   const { name } = folderLabel(experiment.root)
   const evaluations = experiment.evaluations
   const problems =
     experiment.issues.length +
-    evaluations.filter((e) => e.state !== 'ok' && e.state !== 'missing').length
-  const savedEvaluations = evaluations.filter((e) => e.state !== 'missing')
-  const pendingEvaluations = evaluations.length - savedEvaluations.length
+    evaluations.filter(
+      (e) =>
+        e.state === 'failed' ||
+        e.state === 'not_fetched' ||
+        (e.state === 'incomplete' &&
+          e.simulatorStatus !== null &&
+          !['running', 'planned'].includes(e.simulatorStatus))
+    ).length
+  const [missionFilters, setMissionFilters] = useState(ALL_FILTERS)
+  const allSavedEvaluations = evaluations.filter((e) => e.state !== 'missing')
+  const savedEvaluations = allSavedEvaluations.filter((e) =>
+    matchesMissionFilters(e, missionFilters)
+  )
+  const pendingEvaluations = evaluations.length - allSavedEvaluations.length
+  const filtering = Object.values(missionFilters).some((v) => v !== 'All')
   const [selectedEvaluationKey, setSelectedEvaluationKey] = useState('')
+  const missionBest = useMemo(() => missionSummary(experiment), [experiment])
   const selectedEvaluation =
-    savedEvaluations.find((e) => e.key === selectedEvaluationKey) ?? savedEvaluations[0]
+    savedEvaluations.find((e) => e.key === selectedEvaluationKey) ??
+    savedEvaluations.find((e) => e.label === missionBest?.model?.label) ??
+    savedEvaluations[0]
   const variantGroups = [...new Set(savedEvaluations.map((evaluation) => evaluation.label))].map(
     (label) => savedEvaluations.filter((evaluation) => evaluation.label === label)
   )
   const selectedGroup = variantGroups.find((group) => group[0].label === selectedEvaluation?.label)
+  const variantSummaries = variantGroups.map(variantSummary)
+  const selectGroup = (label: string) => {
+    const group = variantGroups.find((g) => g[0].label === label)
+    if (!group) return
+    const sameSeed = group.find((entry) => entry.trainingSeed === selectedEvaluation?.trainingSeed)
+    setSelectedEvaluationKey((sameSeed ?? group[0]).key)
+  }
   const hasModel = evaluations.some((e) => e.trainingSeed !== null)
 
   return (
@@ -698,36 +1042,76 @@ export function ExperimentPage({
           { label: 'RL experiments', onClick: onExperiments },
           ...groupCrumbs,
         ]}
-        title={experimentLabel(name || experiment.plan?.name || experiment.name)}
+        title={sizes?.family ?? experimentLabel(name || experiment.plan?.name || experiment.name)}
         actions={
-          <Button variant="secondary" onClick={() => onTab('episodes')}>
-            Watch in 3D
-          </Button>
+          <>
+            {sizes && (
+              <Segmented
+                size="lg"
+                options={sizes.peers.map((p) => ({ value: p, label: `${p} peers` }))}
+                value={sizes.value}
+                onChange={sizes.onChange}
+              />
+            )}
+            <WatchMenu
+              evaluation={selectedEvaluation}
+              openingEpisode={openingEpisode}
+              onOpenEpisode={onOpenEpisode}
+            />
+          </>
         }
       />
+      {experiment.campaignProgress &&
+        experiment.campaignProgress.status !== 'completed' &&
+        experiment.evaluations.some((evaluation) => evaluation.state !== 'ok') && (
+          <Note tone={experiment.campaignProgress.status === 'failed' ? 'error' : 'warn'}>
+            {experiment.campaignProgress.trained} of {experiment.campaignProgress.expected} models
+            trained
+            {experiment.campaignProgress.status === 'failed' ? '; the campaign stopped.' : '.'}
+          </Note>
+        )}
 
       {(catalog.truncated || openError || pendingEvaluations > 0) && (
         <div className="flex flex-col gap-3 -mt-2">
           {catalog.truncated && (
             <Note tone="warn">
-              The folder listing was cut off at its entry limit, so some files may appear missing.
-              Open the experiment folder itself instead of a large parent folder.
+              The folder listing was cut off, so some files may be missing. Open the experiment
+              folder itself.
             </Note>
           )}
           {openError && <Note tone="error">{openError}</Note>}
           {pendingEvaluations > 0 && (
             <Note tone="warn">
               {pendingEvaluations} planned evaluation
-              {pendingEvaluations === 1 ? ' has' : 's have'} no saved result yet, so this plan is
-              incomplete. Only saved results are shown.
+              {pendingEvaluations === 1 ? ' has' : 's have'} no results yet.
             </Note>
           )}
         </div>
       )}
 
-      {variantGroups.length > 0 && (
+      {experiment.kind === 'campaign' &&
+        allSavedEvaluations.some((e) => e.missionTags?.phase != null) && (
+          <MissionComparison
+            catalog={catalog}
+            root={experiment.root}
+            evaluations={allSavedEvaluations}
+            visible={savedEvaluations}
+            mission={allSavedEvaluations[0]?.missionKind ?? ''}
+            filters={missionFilters}
+            onFilters={setMissionFilters}
+            onSelect={(e) => setSelectedEvaluationKey(e.key)}
+          />
+        )}
+
+      {(variantGroups.length > 0 || filtering) && (
         <Section
-          title={variantGroups.length === 1 ? 'Reward variant' : 'Reward variants'}
+          title={
+            experiment.kind === 'campaign'
+              ? 'Model comparisons'
+              : variantGroups.length === 1
+                ? 'Reward variant'
+                : 'Reward variants'
+          }
           aside={
             selectedGroup &&
             selectedGroup.length > 1 && (
@@ -743,63 +1127,57 @@ export function ExperimentPage({
             )
           }
         >
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
-            {variantGroups.map((group) => {
-              const evaluation = group[0]
-              const result = (policy: string, metric: string) =>
-                mean(
-                  group.map(
-                    (entry) =>
-                      policyRows(entry, [metric]).find((row) => row.policy === policy)?.metricMeans[
-                        metric
-                      ]
+          {!variantSummaries.length && (
+            <p className="text-base text-ink-2">No saved models match this filter.</p>
+          )}
+          {variantSummaries.length > 0 && (
+            <Disclosure
+              // a filter change reopens the cards, so picking a phase shows its models
+              key={filtering ? JSON.stringify(missionFilters) : 'all'}
+              title={`${missionFilters.phase === 'All' ? 'Browse model cards' : `Phase ${missionFilters.phase} model cards`} (${variantSummaries.length})`}
+              defaultOpen={
+                filtering || !allSavedEvaluations.some((e) => e.missionTags?.phase != null)
+              }
+            >
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
+                {variantSummaries.map((row, i) => {
+                  const active = selectedEvaluation?.label === row.label
+                  const tags = savedEvaluations.find((e) => e.label === row.label)?.missionTags
+                  return (
+                    <button
+                      key={row.label}
+                      type="button"
+                      onClick={() => selectGroup(row.label)}
+                      aria-pressed={active}
+                      className={`glass p-6 sm:p-7 flex flex-col gap-6 text-left min-w-0 ${MOTION.surface} ${MOTION.enter} ${active ? 'ring-2 ring-accent bg-white/90' : 'hover:bg-white/80'}`}
+                      style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'backwards' }}
+                    >
+                      <div className="w-full flex flex-col gap-2">
+                        <span className="text-xl font-semibold tracking-tight text-ink-title">
+                          {row.title}
+                        </span>
+                        {tags && (
+                          <span className="flex items-center gap-2">
+                            <PhasePill phase={tags.phase} />
+                            <span className="text-sm text-ink-2">{tags.origin}</span>
+                          </span>
+                        )}
+                        {row.reward && (
+                          <span className="text-base font-medium text-ink-2">{row.reward}</span>
+                        )}
+                      </div>
+                      {row.pending && <span className="text-base text-ink-2">{row.pending}</span>}
+                      <div className="w-full grid grid-cols-3 gap-4">
+                        <Figure value={row.model} label={row.metricLabel} />
+                        <Figure value={row.baseline} label="Best baseline" />
+                        <Figure value={row.travel} label="Model travel" />
+                      </div>
+                    </button>
                   )
-                )
-              const baselines = evaluation.policies
-                .filter((policy) => policy !== 'model')
-                .map((policy) => result(policy, 'delivery_ratio'))
-                .filter((v): v is number => v !== null)
-              const travel = result('model', 'travel_m_total')
-              const active = selectedEvaluation?.label === evaluation.label
-              return (
-                <button
-                  key={evaluation.label}
-                  type="button"
-                  onClick={() => {
-                    const sameSeed = group.find(
-                      (entry) => entry.trainingSeed === selectedEvaluation?.trainingSeed
-                    )
-                    setSelectedEvaluationKey((sameSeed ?? evaluation).key)
-                  }}
-                  aria-pressed={active}
-                  className={`glass p-6 sm:p-7 flex flex-col gap-6 text-left min-w-0 ${MOTION.surface} ${active ? 'ring-2 ring-accent bg-white/90' : 'hover:bg-white/80'}`}
-                >
-                  <div className="w-full flex items-center justify-between gap-4">
-                    <span className="text-xl font-semibold tracking-tight text-ink-title truncate">
-                      {variantTitle(evaluation.label)}
-                    </span>
-                    <span className="flex-shrink-0 text-base font-medium text-ink-2">
-                      {rewardLabel(evaluation)}
-                    </span>
-                  </div>
-                  <div className="w-full grid grid-cols-3 gap-4">
-                    <Figure
-                      value={pct0(result('model', 'delivery_ratio'))}
-                      label="Model delivery"
-                    />
-                    <Figure
-                      value={pct0(baselines.length ? Math.max(...baselines) : null)}
-                      label="Baseline delivery"
-                    />
-                    <Figure
-                      value={travel === null ? '–' : `${Math.round(travel).toLocaleString()} m`}
-                      label="Model travel"
-                    />
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+                })}
+              </div>
+            </Disclosure>
+          )}
         </Section>
       )}
 
@@ -875,7 +1253,11 @@ export function ExperimentPage({
           {tab === 'setup' && (
             <>
               {selectedEvaluation && (
-                <ExperimentSetup key={selectedEvaluation.key} evaluation={selectedEvaluation} />
+                <ExperimentSetup
+                  key={selectedEvaluation.key}
+                  evaluation={selectedEvaluation}
+                  reference={evaluations.find((e) => rewardLabel(e) === 'Dynamic Balance')}
+                />
               )}
               {experiment.plan && (
                 <div className="glass px-6">

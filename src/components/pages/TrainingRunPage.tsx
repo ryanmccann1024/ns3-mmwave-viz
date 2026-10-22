@@ -1,4 +1,5 @@
 import { MOTION } from '../../styles/motion'
+import { rewardComponentLabel } from '../../lib/rlLabels'
 import { useState } from 'react'
 import type { ResultCatalog } from '../../lib/resultCatalog'
 import type { TrainingEpisode, TrainingRun } from '../../lib/trainingRun'
@@ -12,6 +13,7 @@ import { Segmented } from '../ui/Segmented'
 import { TrainingInsights } from '../rl/TrainingInsights'
 import { Note } from '../ExperimentStatus'
 import { Skeleton } from '../ui/Skeleton'
+import { Loading } from '../ui/Spinner'
 
 interface Props {
   catalog: ResultCatalog
@@ -59,7 +61,7 @@ function EpisodeTable({
             <th className="font-medium py-2 text-right">Return</th>
             {run.rewardComponents.map((c) => (
               <th key={c} className="font-medium py-2 text-right hidden md:table-cell">
-                {c}
+                {rewardComponentLabel(c)}
               </th>
             ))}
             <th className="font-medium py-2 text-right">Decisions</th>
@@ -130,8 +132,9 @@ function Details({ run }: { run: TrainingRun }) {
     ['Ended', run.endedAt ?? 'not recorded'],
     [
       'Reward',
-      run.rewardComponents.map((c, i) => `${c} × ${run.rewardWeights[i] ?? 1}`).join(' + ') ||
-        'not recorded',
+      run.rewardComponents
+        .map((c, i) => `${rewardComponentLabel(c)} × ${run.rewardWeights[i] ?? 1}`)
+        .join(' + ') || 'not recorded',
     ],
     ['Actions', run.actionMeanings.join(', ') || 'not recorded'],
     ['Controlled nodes', run.slotNodeIds.join(', ') || 'not recorded'],
@@ -210,14 +213,14 @@ export function TrainingRunPage({
       />
       {openError && <Note tone="error">{openError}</Note>}
       {(!loaded || loaded.state === 'loading') && (
-        <div role="status" aria-busy="true" aria-label="Reading training run">
-          <span className="sr-only">Reading training run…</span>
+        <div className="flex flex-col gap-4" aria-busy="true">
+          <Loading label="Reading training run" />
           <Skeleton lines={3} />
         </div>
       )}
       {loaded?.state === 'error' && <Note tone="error">{loaded.message}</Note>}
       {run && (
-        <>
+        <div className={`flex flex-col gap-4 ${MOTION.page}`}>
           <div>
             <Segmented
               options={[
@@ -234,7 +237,7 @@ export function TrainingRunPage({
             {tab === 'episodes' && <EpisodeTable run={run} onPlay={(e) => onPlay(run, e)} />}
             {tab === 'details' && <Details run={run} />}
           </div>
-        </>
+        </div>
       )}
     </div>
   )

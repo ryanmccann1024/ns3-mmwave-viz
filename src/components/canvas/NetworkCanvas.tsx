@@ -2,8 +2,11 @@ import { Canvas } from '@react-three/fiber'
 import type { SimFrame, BuildingState, SimMeta, JammerState } from '../../types'
 import type { SceneBounds } from '../../hooks/useSimData'
 import { Scene } from './Scene'
+import type { JammerMap } from './JammerFieldLayer'
 import type { Trail } from './TrajectoryLayer'
 import type { BaselinePlan } from '../../lib/baselineManifest'
+import type { InvestigationTarget } from '../../lib/missionTarget'
+import type { RadioChannel } from '../../lib/runIni'
 import { getScenarioTheme } from '../../styles/scenarioThemes'
 
 interface Props {
@@ -15,6 +18,8 @@ interface Props {
   jammers: JammerState[]
   sceneBounds: SceneBounds
   meta: SimMeta | null
+  /** run.ini channel settings; its 3GPP scenario picks the scene's look */
+  channel?: RadioChannel | null
   compact?: boolean
   selectedNode: number | null
   selectedLink: string | null
@@ -25,6 +30,9 @@ interface Props {
   trails?: Trail[]
   replayPolicy?: string
   placementPlan?: BaselinePlan | null
+  /** an investigation's goal, and the CSV id of its investigator when known */
+  mission?: { target: InvestigationTarget; investigatorCsvId: number | null } | null
+  jammerMap?: JammerMap | null
 }
 
 export function NetworkCanvas({
@@ -35,6 +43,7 @@ export function NetworkCanvas({
   jammers,
   sceneBounds,
   meta,
+  channel,
   compact = false,
   selectedNode,
   selectedLink,
@@ -45,14 +54,22 @@ export function NetworkCanvas({
   trails,
   replayPolicy,
   placementPlan,
+  mission,
+  jammerMap,
 }: Props) {
-  const scenario = meta?.scenario ?? ''
+  // The 3GPP model from run.ini decides the look; the scenario label is often a run name
+  const declared = channel?.scenario || (meta?.scenario !== 'Unknown' ? meta?.scenario : '') || ''
+  // An unrecognised run with buildings is a street scene; give it the urban look
+  const scenario = getScenarioTheme(declared).site || buildings.length === 0 ? declared : 'UMi'
   const theme = getScenarioTheme(scenario)
 
   return (
     <Canvas
       style={{ background: theme.canvasBackground }}
       frameloop="always"
+      shadows
+      // log depth keeps ground, roads and footprints from z-fighting at city scale
+      gl={{ logarithmicDepthBuffer: true }}
       onPointerMissed={() => {
         onSelectNode(null)
         onSelectLink(null)
@@ -78,6 +95,8 @@ export function NetworkCanvas({
         trails={trails}
         replayPolicy={replayPolicy}
         placementPlan={placementPlan}
+        mission={mission}
+        jammerMap={jammerMap}
       />
     </Canvas>
   )

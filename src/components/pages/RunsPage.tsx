@@ -13,6 +13,7 @@ import {
   unplayableForBatch,
 } from './shared'
 import { MOTION } from '../../styles/motion'
+import { Loading } from '../ui/Spinner'
 
 interface Props {
   workspace: Workspace
@@ -83,7 +84,11 @@ export function RunsPage({ workspace, onOpenRun }: Props) {
         </div>
       )}
 
-      {!workspace.dirName && !workspace.loadingDir ? (
+      {workspace.loadingDir ? (
+        <div className={`glass px-6 py-10 flex justify-center ${MOTION.enterFade}`}>
+          <Loading label="Loading simulations" />
+        </div>
+      ) : !workspace.dirName ? (
         <NoFolder what="simulation runs" onOpen={workspace.openFolder} />
       ) : (
         batches.length === 0 && (
