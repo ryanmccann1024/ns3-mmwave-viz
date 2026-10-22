@@ -982,25 +982,6 @@ export function PlayerPage({
                   rewardLandscape={showLandscape ? landscapeView : null}
                   jammerMap={jammerMap.map}
                 />
-                {(landscape || landscapeState.status === 'error') && (
-                  <div className="absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)]">
-                    <RewardLandscapeControls
-                      landscape={landscape}
-                      error={landscapeState.status === 'error' ? landscapeState.error : null}
-                      choice={landscapeChoice}
-                      view={landscapeView}
-                      shown={showLandscape}
-                      onShown={setShowLandscape}
-                      fields={landscapeFields}
-                      field={shownField}
-                      onField={setLandscapeField}
-                      scale={landscapeScale}
-                      onScale={setLandscapeScale}
-                      selectedNode={selectedNode}
-                      wantedDecision={landscapeDecision}
-                    />
-                  </div>
-                )}
                 {placementPlan && (
                   <div
                     role="group"
@@ -1026,10 +1007,24 @@ export function PlayerPage({
                   />
                 )}
                 <OutageNotice outages={outageNotice} onSelectNode={selectNode} />
-                <div
-                  className="absolute top-3 right-3 z-10 flex items-center gap-2"
-                  title="Compact view compresses distances for visibility; to-scale view preserves geometry."
-                >
+                <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+                  {(landscape || landscapeState.status === 'error') && (
+                    <RewardLandscapeControls
+                      landscape={landscape}
+                      error={landscapeState.status === 'error' ? landscapeState.error : null}
+                      choice={landscapeChoice}
+                      view={landscapeView}
+                      shown={showLandscape}
+                      onShown={setShowLandscape}
+                      fields={landscapeFields}
+                      field={shownField}
+                      onField={setLandscapeField}
+                      scale={landscapeScale}
+                      onScale={setLandscapeScale}
+                      selectedNode={selectedNode}
+                      wantedDecision={landscapeDecision}
+                    />
+                  )}
                   {jammerMap.present && (
                     <button
                       type="button"
@@ -1042,22 +1037,24 @@ export function PlayerPage({
                           ? 'Hide the jamming map'
                           : 'Show how strongly the jammer reaches each spot')
                       }
-                      className={`${SECONDARY_BUTTON} !h-11 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`${SECONDARY_BUTTON} !h-11 hover:!bg-accent-tint disabled:opacity-50 disabled:cursor-not-allowed ${
                         jammerMap.on ? '!bg-accent-tint !text-accent-ink' : ''
                       }`}
                     >
                       Jamming map
                     </button>
                   )}
-                  <Segmented
-                    size="lg"
-                    options={[
-                      { value: 'scale', label: 'To scale' },
-                      { value: 'compact', label: 'Compact' },
-                    ]}
-                    value={sim.compact ? 'compact' : 'scale'}
-                    onChange={(value) => sim.setCompact(value === 'compact')}
-                  />
+                  <div title="Compact view compresses distances for visibility; to-scale view preserves geometry.">
+                    <Segmented
+                      size="lg"
+                      options={[
+                        { value: 'scale', label: 'To scale' },
+                        { value: 'compact', label: 'Compact' },
+                      ]}
+                      value={sim.compact ? 'compact' : 'scale'}
+                      onChange={(value) => sim.setCompact(value === 'compact')}
+                    />
+                  </div>
                   {fullscreenSupported && (
                     <button
                       type="button"
@@ -1065,7 +1062,7 @@ export function PlayerPage({
                       aria-pressed={fullscreen}
                       aria-label={fullscreen ? 'Exit full screen' : 'Full screen'}
                       title={fullscreen ? 'Exit full screen' : 'Full screen'}
-                      className={`${SECONDARY_BUTTON} !w-11 !h-11 !px-0`}
+                      className={`${SECONDARY_BUTTON} !w-11 !h-11 !px-0 hover:!bg-accent-tint`}
                     >
                       <FullscreenIcon exit={fullscreen} />
                     </button>

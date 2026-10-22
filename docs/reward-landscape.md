@@ -122,13 +122,12 @@ Open <http://localhost:5173>, then:
    while it was open.
 2. Click a controlled node. If you click no node, the map shows the first one.
    If you click an uncontrolled node, the card says so.
-3. The **Reward landscape** card at the bottom-left has:
-   - an on/off button;
-   - a dropdown for **Total reward** or a single component, with a
-     **Weighted / Raw** switch;
-   - a legend (darker is higher);
-   - a caption naming the node, the decision, the best move and the recorded
-     reward.
+3. **Reward map** in the top-right toolbar, next to **Jamming map**, turns the
+   map on and off. The settings button beside it opens a menu with:
+   - the field: **Total reward** or a single component, with a
+     **Weighted / Raw** switch for components;
+   - the colour scale for the shown decision;
+   - the node, the decision, the best move and the recorded reward.
 4. Play or scrub the timeline. The map shows the latest landscape decision at
    or before the playhead.
 
@@ -160,6 +159,6 @@ Open <http://localhost:5173>, then:
 |---|---|
 | `require centralized control mode` | The scenario uses `controlled_node_id`. Use `controlled_nodes = ...` in `[rl]`. |
 | Generator says the binary has no channel query | Rebuild (step 1). |
-| No landscape card in the viz | The episode folder has no `reward_landscape.json`, or the reward is C++-only (no `--reward-components`). Refresh after generating. |
-| Only "Total reward" in the dropdown | The evaluation ran without `--reward-components`. |
+| No **Reward map** button in the viz | The episode folder has no `reward_landscape.json`, or the reward is C++-only (no `--reward-components`). Refresh after generating. |
+| Only "Total reward" in the settings menu | The evaluation ran without `--reward-components`. |
 | `npm run dev` fails | Use `$NODE node_modules/vite/bin/vite.js` (node v24). |
