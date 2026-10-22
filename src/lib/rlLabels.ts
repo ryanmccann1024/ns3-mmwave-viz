@@ -302,6 +302,18 @@ export function experimentLabel(name: string): string {
   )
 }
 
+/**
+ * A snake_case key (reward component, action meaning, config field) as words:
+ * sinr_quality -> SINR quality, delivery_ratio -> Delivery ratio.
+ */
+export function componentLabel(key: string): string {
+  const t = key
+    .replace(/_+/g, ' ')
+    .trim()
+    .replace(/\b(sinr|snr|los|nlos|mcs)\b/gi, (w) => w.toUpperCase())
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 /** A manifest's model_selection, worded so a final model is never read as a best checkpoint */
 export function modelSelectionLabel(selection: string | null | undefined): string {
   if (selection === 'final') return 'Final model'

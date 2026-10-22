@@ -3,6 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UseSimDataReturn } from '../../hooks/useSimData'
 import { telemetryAutoLoadBytes, useEpisodeTelemetry } from '../../hooks/useEpisodeTelemetry'
+import { useRewardLandscape } from '../../hooks/useRewardLandscape'
+import type { ComponentScale } from '../../lib/rewardLandscape'
+import { buildLandscapeView, selectSlice, sliceFields } from '../../lib/rewardLandscape'
+import { RewardLandscapeControls } from '../rl/RewardLandscapeControls'
 import type { MetricId } from '../../hooks/useMetricSeries'
 import type { DecisionIndex } from '../../lib/decisionExplorer'
 import {
@@ -384,6 +388,9 @@ export function PlayerPage({
   const [decisionRange, setDecisionRange] = useState<[number, number] | null>(null)
   const [focusSlot, setFocusSlot] = useState<number | null>(null)
   const [seekNotice, setSeekNotice] = useState<string | null>(null)
+  const [showLandscape, setShowLandscape] = useState(true)
+  const [landscapeField, setLandscapeField] = useState('total')
+  const [landscapeScale, setLandscapeScale] = useState<ComponentScale>('weighted')
   const isDesktop = useMediaQuery('(min-width: 1024px)')
 
   // steps.jsonl is read once here and shared by the Episode and Decisions tabs
@@ -518,6 +525,48 @@ export function PlayerPage({
     selectDecision(pick)
   }, [view, selectedDecision, telemetry, explorer.index, currentTime, selectDecision])
 
+  // Reward landscape: the selected node's slice at the decision under the playhead (a chosen
+  // decision seeks the playhead to it, so following the playhead also follows the choice)
+  const landscapeState = useRewardLandscape(
+    rl?.catalog ?? null,
+    rl?.episode.files.rewardLandscape ?? null
+  )
+  const landscape = landscapeState.status === 'ready' ? landscapeState.landscape : null
+  const playheadDecision =
+    explorer.index && currentTime !== null ? decisionAtTime(explorer.index, currentTime) : null
+  const landscapeDecision = playheadDecision ?? selectedDecision
+  const landscapeNodeId =
+    selectedNode === null
+      ? null
+      : mapped
+        ? (mapped.contractIdByCsvId.get(selectedNode) ?? `csv:${selectedNode}`)
+        : String(selectedNode)
+  const landscapeChoice = useMemo(
+    () =>
+      landscape
+        ? selectSlice(landscape, {
+            nodeId: landscapeNodeId,
+            decision: landscapeDecision,
+            timeS: landscapeDecision === null ? currentTime : null,
+          })
+        : null,
+    [landscape, landscapeNodeId, landscapeDecision, currentTime]
+  )
+  // landscapeChoice is a new object on every frame; the field only rebuilds when the slice does
+  const landscapeSlice = landscapeChoice?.slice ?? null
+  const landscapeFields = useMemo(
+    () => (landscape && landscapeSlice ? sliceFields(landscape, landscapeSlice) : []),
+    [landscape, landscapeSlice]
+  )
+  const shownField = landscapeFields.includes(landscapeField) ? landscapeField : 'total'
+  const landscapeView = useMemo(
+    () =>
+      landscape && landscapeSlice
+        ? buildLandscapeView(landscape, landscapeSlice, shownField, landscapeScale)
+        : null,
+    [landscape, landscapeSlice, shownField, landscapeScale]
+  )
+
   const frame = sim.currentFrame
   if (!frame) {
     return (
@@ -544,16 +593,18 @@ export function PlayerPage({
     const contractId = id !== null && mapped ? (mapped.contractIdByCsvId.get(id) ?? null) : null
     if (contractId !== preferences.nodeId) publish({ nodeId: contractId })
   }
+  // Scene clicks call both setters (the node's, then the other with null), so clearing one
+  // selection must not clear the other, or every click in the scene undoes itself
   const selectNode = (id: number | null) => {
     setSelectedNode(id)
-    setSelectedLink(null)
+    if (id !== null) setSelectedLink(null)
     rememberNode(id)
     if (mapped) setFocusSlot(id === null ? null : (mapped.slotByCsvId.get(id) ?? null))
     if (id !== null) reveal()
   }
   const selectLink = (key: string | null) => {
     setSelectedLink(key)
-    setSelectedNode(null)
+    if (key !== null) setSelectedNode(null)
     if (key !== null) reveal()
   }
   const focusSlotFromChip = (slot: number | null) => {
@@ -661,7 +712,13 @@ export function PlayerPage({
             title="Selection"
             aside={
               (node || link) && (
-                <Button variant="secondary" onClick={() => selectNode(null)}>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    selectNode(null)
+                    selectLink(null)
+                  }}
+                >
                   Clear
                 </Button>
               )
@@ -922,8 +979,28 @@ export function PlayerPage({
                   trails={rl?.trails}
                   replayPolicy={rl?.episode.policy}
                   placementPlan={showPlacement ? placementPlan : null}
+                  rewardLandscape={showLandscape ? landscapeView : null}
                   jammerMap={jammerMap.map}
                 />
+                {(landscape || landscapeState.status === 'error') && (
+                  <div className="absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)]">
+                    <RewardLandscapeControls
+                      landscape={landscape}
+                      error={landscapeState.status === 'error' ? landscapeState.error : null}
+                      choice={landscapeChoice}
+                      view={landscapeView}
+                      shown={showLandscape}
+                      onShown={setShowLandscape}
+                      fields={landscapeFields}
+                      field={shownField}
+                      onField={setLandscapeField}
+                      scale={landscapeScale}
+                      onScale={setLandscapeScale}
+                      selectedNode={selectedNode}
+                      wantedDecision={landscapeDecision}
+                    />
+                  </div>
+                )}
                 {placementPlan && (
                   <div
                     role="group"

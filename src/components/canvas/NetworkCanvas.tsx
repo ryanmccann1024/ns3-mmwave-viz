@@ -8,6 +8,7 @@ import type { BaselinePlan } from '../../lib/baselineManifest'
 import type { InvestigationTarget } from '../../lib/missionTarget'
 import type { RadioChannel } from '../../lib/runIni'
 import { getScenarioTheme } from '../../styles/scenarioThemes'
+import type { LandscapeView } from '../../lib/rewardLandscape'
 
 interface Props {
   frame: SimFrame
@@ -30,6 +31,8 @@ interface Props {
   trails?: Trail[]
   replayPolicy?: string
   placementPlan?: BaselinePlan | null
+  /** reward landscape drawn on the ground for the chosen node and decision */
+  rewardLandscape?: LandscapeView | null
   /** an investigation's goal, and the CSV id of its investigator when known */
   mission?: { target: InvestigationTarget; investigatorCsvId: number | null } | null
   jammerMap?: JammerMap | null
@@ -54,6 +57,7 @@ export function NetworkCanvas({
   trails,
   replayPolicy,
   placementPlan,
+  rewardLandscape,
   mission,
   jammerMap,
 }: Props) {
@@ -95,6 +99,7 @@ export function NetworkCanvas({
         trails={trails}
         replayPolicy={replayPolicy}
         placementPlan={placementPlan}
+        rewardLandscape={rewardLandscape}
         mission={mission}
         jammerMap={jammerMap}
       />

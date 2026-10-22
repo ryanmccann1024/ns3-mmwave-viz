@@ -20,6 +20,8 @@ import type { JammerMap } from './JammerFieldLayer'
 import type { Trail } from './TrajectoryLayer'
 import type { BaselinePlan } from '../../lib/baselineManifest'
 import { PlacementLayer } from './PlacementLayer'
+import { RewardLandscapeLayer } from './RewardLandscapeLayer'
+import type { LandscapeView } from '../../lib/rewardLandscape'
 
 interface Props {
   frame: SimFrame
@@ -42,6 +44,7 @@ interface Props {
   trails?: Trail[]
   replayPolicy?: string
   placementPlan?: BaselinePlan | null
+  rewardLandscape?: LandscapeView | null
   mission?: { target: InvestigationTarget; investigatorCsvId: number | null } | null
   /** the jamming map, when it is switched on */
   jammerMap?: JammerMap | null
@@ -67,6 +70,7 @@ export function Scene({
   trails,
   replayPolicy,
   placementPlan,
+  rewardLandscape,
   mission,
   jammerMap,
 }: Props) {
@@ -203,6 +207,15 @@ export function Scene({
         posScale={compactFactor}
         dim={dimensions}
       />
+
+      {/* On the ground, under everything else */}
+      {rewardLandscape && (
+        <RewardLandscapeLayer
+          view={rewardLandscape}
+          dimensions={dimensions}
+          posScale={compactFactor}
+        />
+      )}
 
       {/* Buildings */}
       {buildings.map((b) => (
