@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSimData } from './hooks/useSimData'
 import { usePlaybackLog } from './hooks/usePlaybackLog'
 import { useExperimentSession } from './hooks/useExperimentSession'
@@ -53,6 +53,9 @@ export default function App() {
   const [experimentRoot, setExperimentRoot] = useState<string | null>(null)
   /** team size last opened, so the next scenario with sizes opens at the same one */
   const [preferredPeers, setPreferredPeers] = useState<number | null>(null)
+  /** a team-size switch in progress: its results fade out, load, then fade in */
+  const [switchingSize, setSwitchingSize] = useState(false)
+  const sizeSwitch = useRef(0)
   // Compatible player choices (string node id, tab, chart metric) carried across episodes;
   // the keyed PlayerPage remount still resets everything episode-relative
   const [playerPreferences, setPlayerPreferences] =
@@ -88,8 +91,8 @@ export default function App() {
   }
 
   /** `keepTab` when switching team size, so the same view of the other size shows */
-  function openExperiment(root: ExperimentRoot, keepTab = false) {
-    if (!workspace.fullCatalog) return
+  function openExperiment(root: ExperimentRoot, keepTab = false): Promise<void> {
+    if (!workspace.fullCatalog) return Promise.resolve()
     setEpisodeError(null)
     if (!keepTab) setExperimentTab('results')
     setExperimentRoot(root.root)
@@ -97,7 +100,19 @@ export default function App() {
     if (peers !== undefined) setPreferredPeers(peers)
     setGroupKey(experimentGroup(root.root).key)
     setPage('experiment')
-    session.openExperiment(workspace.fullCatalog, root)
+    return session.openExperiment(workspace.fullCatalog, root)
+  }
+
+  /** Another team size of the open scenario: fade the results out, then load it */
+  async function switchSize(root: ExperimentRoot) {
+    const id = ++sizeSwitch.current
+    setSwitchingSize(true)
+    setExperimentRoot(root.root)
+    // let the fade-out finish, so the next results never swap in mid-fade
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    if (id !== sizeSwitch.current) return
+    await openExperiment(root, true)
+    if (id === sizeSwitch.current) setSwitchingSize(false)
   }
 
   function openGroup(key: string) {
@@ -168,8 +183,9 @@ export default function App() {
           value: family.sizes.find((s) => s.root.root === experimentRoot)?.peers ?? 0,
           onChange: (peers: number) => {
             const next = family.sizes.find((s) => s.peers === peers)
-            if (next && next.root.root !== experimentRoot) openExperiment(next.root, true)
+            if (next && next.root.root !== experimentRoot) void switchSize(next.root)
           },
+          loading: switchingSize,
         }
       : undefined
   const experimentName = session.experiment
@@ -227,7 +243,8 @@ export default function App() {
       : page === 'group'
         ? `group:${groupKey ?? ''}`
         : page === 'experiment'
-          ? `experiment:${session.experiment?.root ?? ''}`
+          ? // team sizes of one scenario share a key, so a size switch animates in place
+            `experiment:${sizes ? family?.key : (session.experiment?.root ?? '')}`
           : page === 'training'
             ? `training:${trainingRoot ?? ''}`
             : page === 'home'

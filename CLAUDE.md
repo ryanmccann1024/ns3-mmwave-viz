@@ -31,7 +31,7 @@ Standalone baseline runs live at `outputs/YYYY-MM/DD/HH-MM-SS-baseline[-N]/basel
 - `components/ui/` — Reusable UI primitives (Button, Badge, Row, StatItem, Terminal)
 - `components/canvas/` — Three.js scene components (Scene, NodeObject, LinkObject, BuildingObject, SceneEnvironment)
 - `styles/tokens.ts` — Single source of truth for colors, sizes, labels, Tailwind class mappings
-- `lib/jammerField.ts` (+ `.worker.ts` pool) + `components/canvas/JammerVolumeLayer.tsx` (3D ray-marched shells at 0/10/20/30 dB, rays stop at buildings) / `JammerFieldLayer.tsx` (slice) — Jamming map: ports the simulator's JammerModel gates and ns-3 3GPP UMa/UMi/RMa path loss with building LOS (no shadow fading); channel settings come from the archived `inputs/run.ini` (`lib/runIni.ts`). Keep it in step with `mesh-sim/src/jammer/` — tests pin values from a shadowing-off sim run
+- `lib/jammerField.ts` (+ `.worker.ts` pool) + `components/canvas/JammerVolumeLayer.tsx` (3D ray-marched shells at 0/10/20/30 dB, rays stop at buildings) / `JammerFieldLayer.tsx` (slice, flat views only) — Jamming map (no legend panel; on/off remembered in localStorage): ports the simulator's JammerModel gates and ns-3 3GPP UMa/UMi/RMa path loss with building LOS (no shadow fading); channel settings come from the archived `inputs/run.ini` (`lib/runIni.ts`). Keep it in step with `mesh-sim/src/jammer/` — tests pin values from a shadowing-off sim run
 - `components/decisions/` + `lib/decisionExplorer.ts`/`nodeIdentity.ts`/`frameSeek.ts` — Decisions tab: integer-keyed `steps.jsonl` index, exact n−1 input join, derived applied action, checked ordinal node↔CSV mapping, interval-checked frame seek
 
 ## Key Patterns

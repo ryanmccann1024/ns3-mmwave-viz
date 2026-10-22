@@ -24,7 +24,7 @@ const VIEWS = [
   { key: 'tradeoff', label: 'Trade-off' },
   { key: 'overview', label: 'Overview' },
 ] as const
-type View = (typeof VIEWS)[number]['key']
+export type ComparisonView = (typeof VIEWS)[number]['key']
 
 export function MissionComparison({
   catalog,
@@ -35,6 +35,11 @@ export function MissionComparison({
   filters,
   onFilters,
   onSelect,
+  selectedKey,
+  view,
+  onView,
+  metricKey,
+  onMetricKey,
 }: {
   catalog: ResultCatalog
   root: string
@@ -44,11 +49,15 @@ export function MissionComparison({
   filters: MissionFilters
   onFilters: (f: MissionFilters) => void
   onSelect: (e: Evaluation) => void
+  selectedKey?: string
+  /** view and ranking metric are held by the page, so they survive a team-size switch */
+  view: ComparisonView
+  onView: (view: ComparisonView) => void
+  metricKey: string
+  onMetricKey: (key: string) => void
 }) {
   const [history, setHistory] = useState<Evaluation[]>([])
   const [historyError, setHistoryError] = useState('')
-  const [view, setView] = useState<View>('bars')
-  const [metricKey, setMetricKey] = useState('')
   useEffect(() => {
     let current = true
     setHistory([])
@@ -100,7 +109,7 @@ export function MissionComparison({
   const chosen = columns.find((c) => c.key === metricKey) ?? columns[0]
   // the trade-off already puts travel on x, so it never ranks by travel too
   const metric = view === 'tradeoff' && chosen.key === 'travel_m_total' ? columns[0] : chosen
-  const viewProps = { rows, columns, metric, onMetric: setMetricKey, onSelect }
+  const viewProps = { rows, columns, metric, onMetric: onMetricKey, onSelect, selectedKey }
   return (
     <section
       className="glass p-6 sm:p-7 flex flex-col gap-5"
@@ -111,7 +120,7 @@ export function MissionComparison({
         <Segmented
           options={VIEWS.map((v) => ({ value: v.key, label: v.label }))}
           value={view}
-          onChange={setView}
+          onChange={onView}
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -162,7 +171,7 @@ export function MissionComparison({
             .filter((c) => view !== 'tradeoff' || c.key !== 'travel_m_total')
             .map((c) => ({ value: c.key, label: c.label }))}
           value={metric.key}
-          onChange={setMetricKey}
+          onChange={onMetricKey}
         />
       )}
       <div key={view} className={MOTION.enterFade}>

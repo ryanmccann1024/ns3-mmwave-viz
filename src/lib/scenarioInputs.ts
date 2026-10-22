@@ -113,6 +113,7 @@ async function archivedJammerHash(catalog: ResultCatalog, file: string): Promise
     'phase-two.json': 'phase_two_version',
     'phase-three.json': 'phase_three_version',
     'phase-six.json': 'phase_six_version',
+    'phase-seven.json': 'phase_seven_version',
     'phase-five.json': 'phase_five_version',
     'phase-four.json': 'phase_four_version',
   }

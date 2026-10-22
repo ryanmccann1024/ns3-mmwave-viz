@@ -513,6 +513,7 @@ export async function loadMissionScenario(
       'phase_four_report.json',
       'phase_five_report.json',
       'phase_six_report.json',
+      'phase_seven_report.json',
     ].map((file) => readJson(catalog, join(layout.root, file)))
   )
   for (const report of reports) mergeScenarioReport(experiment, layout.campaign, rec(report))
@@ -576,7 +577,8 @@ export function mergeScenarioReport(experiment: Experiment, campaign: string, re
     report.phase_three_report_version === 1 ||
     report.phase_four_report_version === 1 ||
     report.phase_five_report_version === 1 ||
-    report.phase_six_report_version === 1
+    report.phase_six_report_version === 1 ||
+    report.phase_seven_report_version === 1
   ) {
     const groups = [
       ...(Array.isArray(report.variants) ? report.variants : []),

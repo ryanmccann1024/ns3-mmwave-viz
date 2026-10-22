@@ -8,6 +8,8 @@ const record = (value: unknown): Record<string, unknown> =>
     : {}
 
 const GRADED_REWARD_LABELS: Record<string, string> = {
+  coordinated_service_bridge_v1: 'Service + team radio',
+  coordinated_coverage_sufficient_v1: 'Sufficient area + service',
   coordinated_service_fixed_v1: 'Service + fairness (fixed)',
   coordinated_service_adaptive_v1: 'Restore then settle (adaptive)',
   coordinated_investigation_fixed_v1: 'Approach + arrival (fixed)',
@@ -56,11 +58,16 @@ export function gradedRewardExplanation(
         typeof details.formula === 'string'
           ? details.formula
           : 'See the saved mission reward schema.',
-      example: component.includes('investigation')
-        ? 'For each available peer, closeness is exp(-distance beyond the target radius / 100 m). A peer inside has closeness 1. Q gives half its weight to the furthest peer; A counts peers inside.'
-        : component.includes('service')
-          ? 'With nine demanded peers, F averages the three lowest delivery ratios. A high total delivery cannot hide their low service. L measures signal potential, not delivered traffic.'
-          : 'Area is connected outdoor coverage. Coverage has no compact-clustering reward. The settling travel cost is applied only by the adaptive arm after sustained area and service.',
+      example:
+        component === 'coordinated_service_bridge_v1'
+          ? 'G measures the weakest radio bridge across the whole available team. At -6.7 dB it is 0.5; the deficit penalty is w × (1 − G). High delivery between separate pairs can still leave G low.'
+          : component === 'coordinated_coverage_sufficient_v1'
+            ? 'Area reward stops increasing at the saved coverage target. Raw area, target retention, service and travel must still be compared separately.'
+            : component.includes('investigation')
+              ? 'For each available peer, closeness is exp(-distance beyond the target radius / 100 m). A peer inside has closeness 1. Q gives half its weight to the furthest peer; A counts peers inside.'
+              : component.includes('service')
+                ? 'With nine demanded peers, F averages the three lowest delivery ratios. A high total delivery cannot hide their low service. L measures signal potential, not delivered traffic.'
+                : 'Area is connected outdoor coverage. Coverage has no compact-clustering reward. The settling travel cost is applied only by the adaptive arm after sustained area and service.',
       timing:
         'One completed eligible decision; failed peers excluded. Adaptive settling requires 30 seconds of current success; relapse fallback after 5 seconds or immediately after severe loss. Wall contact and rejected peer movement are costs. No future jammer/failure information.',
     }

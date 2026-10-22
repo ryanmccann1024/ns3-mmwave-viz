@@ -10,7 +10,13 @@ export default {
         muted: '#6a7b96',
         faint: '#94a3b8',
         hairline: { DEFAULT: '#e4e9f2', strong: '#d2dae8' },
-        accent: { DEFAULT: '#1e63e9', ink: '#1a55ce', wash: 'rgba(30, 99, 233, 0.08)' },
+        // tint: the wash flattened onto white, for a pressed control over the canvas
+        accent: {
+          DEFAULT: '#1e63e9',
+          ink: '#1a55ce',
+          wash: 'rgba(30, 99, 233, 0.08)',
+          tint: '#edf2fd',
+        },
       },
       fontFamily: {
         sans: [

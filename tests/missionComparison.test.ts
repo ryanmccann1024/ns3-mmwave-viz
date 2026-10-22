@@ -220,3 +220,40 @@ test('Phase 6 short titles, source tags, nested diagnostics and files remain vis
   assert.equal(episode.metrics?.post_event_delivery, 0.75)
   assert.equal(episode.metrics?.final_minute_worst_service, 0)
 })
+
+test('Phase 7 short titles, source tags, nested diagnostics and files remain visible', () => {
+  const schema = { components: ['coordinated_service_bridge_v1'], weights: [1] }
+  assert.equal(shortRewardTitle(schema, 'long title'), 'Service + team radio')
+  assert.deepEqual(
+    missionMetadata('custom/10-23-6', { source_phase: 7 }, { reward_schema: schema }).origin,
+    'New'
+  )
+  assert.equal(phaseFromPath('custom/10-23-6/main/urban-recovery-6-peers'), 7)
+  assert.ok(isCatalogFile(['main', 'phase_seven_report.json']))
+  assert.ok(isCatalogFile(['inputs', 'phase-seven.json']))
+  const experiment = {
+    evaluations: [evaluation('custom/10-23-6/main/a', {})],
+  } as unknown as Experiment
+  const episode = experiment.evaluations[0].episodes[0]
+  episode.dir = 'custom/10-23-6/models/urban-recovery-6-peers/episode-0000'
+  mergeScenarioReport(experiment, 'custom/10-23-6', {
+    phase_seven_report_version: 1,
+    variants: [
+      {
+        diagnostics: [
+          {
+            episode_dir: episode.dir,
+            policy: 'frozen_deterministic',
+            seed: 201,
+            post_event_delivery: 0.75,
+            final_minute_worst_service: 0,
+          },
+        ],
+      },
+    ],
+    escape: [],
+    baselines: [],
+  })
+  assert.equal(episode.metrics?.post_event_delivery, 0.75)
+  assert.equal(episode.metrics?.final_minute_worst_service, 0)
+})

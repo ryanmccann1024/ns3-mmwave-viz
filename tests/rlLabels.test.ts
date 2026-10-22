@@ -183,3 +183,13 @@ test('Coordinated mission labels remain short and explain exact saved formulas',
   assert.match(description?.timing ?? '', /30 seconds/)
   assert.match(description?.timing ?? '', /5 seconds/)
 })
+
+
+test('Phase 7 short labels and explanations distinguish radio deficit and capped area', () => {
+  assert.equal(rewardComponentLabel('coordinated_service_bridge_v1'), 'Service + team radio')
+  assert.equal(rewardComponentLabel('coordinated_coverage_sufficient_v1'), 'Sufficient area + service')
+  const service = gradedRewardExplanation('coordinated_service_bridge_v1')
+  assert.ok(service?.example.includes('whole available team'))
+  const area = gradedRewardExplanation('coordinated_coverage_sufficient_v1')
+  assert.ok(area?.example.includes('stops increasing'))
+})

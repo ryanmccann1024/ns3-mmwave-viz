@@ -32,14 +32,23 @@ export function rewardTerms(schema: unknown): string[] {
   if (typeof coordinated === 'string')
     return [
       ...(coordinated.includes('_service_')
-        ? ['Delivery', 'Lower-tail service', 'SINR', 'Isolation']
+        ? [
+            'Delivery',
+            'Lower-tail service',
+            'SINR',
+            coordinated.includes('_bridge_') ? 'Team radio support' : 'Isolation',
+          ]
         : coordinated.includes('_investigation_')
           ? ['Target proximity', 'Arrival', 'Connectivity']
           : ['Covered area', 'Lower-tail service']),
       'Travel',
       'Wall contact',
       'Peer blocking',
-      coordinated.includes('_adaptive_') ? 'Adaptive priorities' : 'Fixed priorities',
+      coordinated.includes('_adaptive_') ||
+      coordinated.includes('_bridge_') ||
+      coordinated.includes('_sufficient_')
+        ? 'Adaptive priorities'
+        : 'Fixed priorities',
     ]
   return [
     ...new Set(
@@ -61,6 +70,8 @@ export function shortRewardTitle(schema: unknown, fallback: string): string {
     ? first.find((v) => typeof v === 'string' && v.startsWith('coordinated_'))
     : null
   if (typeof coordinated === 'string') {
+    if (coordinated.includes('_bridge_')) return 'Service + team radio'
+    if (coordinated.includes('_sufficient_')) return 'Sufficient area + service'
     const adaptive = coordinated.includes('_adaptive_')
     if (coordinated.includes('_service_'))
       return adaptive ? 'Restore then settle' : 'Service + fairness'

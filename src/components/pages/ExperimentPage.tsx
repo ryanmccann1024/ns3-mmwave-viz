@@ -12,7 +12,7 @@ import { loadTrainingSummary } from '../../lib/experimentIndex'
 import { formatNumber } from '../../lib/comparisonView'
 import { folderLabel, shortNumber as fmt } from '../../lib/format'
 import { trailColor } from '../../styles/tokens'
-import { MissionComparison } from '../rl/MissionComparison'
+import { MissionComparison, type ComparisonView } from '../rl/MissionComparison'
 import {
   ALL_FILTERS,
   matchesMissionFilters,
@@ -65,7 +65,14 @@ interface Props {
   trainingRoots: string[]
   onOpenTrainingRun: (root: string) => void
   /** the same scenario at other team sizes, switched in place; the page is titled without the size */
-  sizes?: { family: string; peers: number[]; value: number; onChange: (peers: number) => void }
+  sizes?: {
+    family: string
+    peers: number[]
+    value: number
+    onChange: (peers: number) => void
+    /** the next size is loading: the results fade out behind a spinner */
+    loading: boolean
+  }
 }
 
 export type ExperimentTab = 'results' | 'learning' | 'episodes' | 'setup' | 'details'
@@ -1016,6 +1023,8 @@ export function ExperimentPage({
   const pendingEvaluations = evaluations.length - allSavedEvaluations.length
   const filtering = Object.values(missionFilters).some((v) => v !== 'All')
   const [selectedEvaluationKey, setSelectedEvaluationKey] = useState('')
+  const [comparisonView, setComparisonView] = useState<ComparisonView>('bars')
+  const [comparisonMetric, setComparisonMetric] = useState('')
   const missionBest = useMemo(() => missionSummary(experiment), [experiment])
   const selectedEvaluation =
     savedEvaluations.find((e) => e.key === selectedEvaluationKey) ??
@@ -1061,250 +1070,282 @@ export function ExperimentPage({
           </>
         }
       />
-      {experiment.campaignProgress &&
-        experiment.campaignProgress.status !== 'completed' &&
-        experiment.evaluations.some((evaluation) => evaluation.state !== 'ok') && (
-          <Note tone={experiment.campaignProgress.status === 'failed' ? 'error' : 'warn'}>
-            {experiment.campaignProgress.trained} of {experiment.campaignProgress.expected} models
-            trained
-            {experiment.campaignProgress.status === 'failed' ? '; the campaign stopped.' : '.'}
-          </Note>
-        )}
-
-      {(catalog.truncated || openError || pendingEvaluations > 0) && (
-        <div className="flex flex-col gap-3 -mt-2">
-          {catalog.truncated && (
-            <Note tone="warn">
-              The folder listing was cut off, so some files may be missing. Open the experiment
-              folder itself.
-            </Note>
-          )}
-          {openError && <Note tone="error">{openError}</Note>}
-          {pendingEvaluations > 0 && (
-            <Note tone="warn">
-              {pendingEvaluations} planned evaluation
-              {pendingEvaluations === 1 ? ' has' : 's have'} no results yet.
-            </Note>
-          )}
-        </div>
-      )}
-
-      {experiment.kind === 'campaign' &&
-        allSavedEvaluations.some((e) => e.missionTags?.phase != null) && (
-          <MissionComparison
-            catalog={catalog}
-            root={experiment.root}
-            evaluations={allSavedEvaluations}
-            visible={savedEvaluations}
-            mission={allSavedEvaluations[0]?.missionKind ?? ''}
-            filters={missionFilters}
-            onFilters={setMissionFilters}
-            onSelect={(e) => setSelectedEvaluationKey(e.key)}
-          />
-        )}
-
-      {(variantGroups.length > 0 || filtering) && (
-        <Section
-          title={
-            experiment.kind === 'campaign'
-              ? 'Model comparisons'
-              : variantGroups.length === 1
-                ? 'Reward variant'
-                : 'Reward variants'
-          }
-          aside={
-            selectedGroup &&
-            selectedGroup.length > 1 && (
-              <Segmented
-                size="lg"
-                options={selectedGroup.map((e) => ({
-                  value: e.key,
-                  label: `Training seed ${e.trainingSeed ?? 'none'}`,
-                }))}
-                value={selectedEvaluation?.key ?? ''}
-                onChange={setSelectedEvaluationKey}
-              />
-            )
-          }
-        >
-          {!variantSummaries.length && (
-            <p className="text-base text-ink-2">No saved models match this filter.</p>
-          )}
-          {variantSummaries.length > 0 && (
-            <Disclosure
-              // a filter change reopens the cards, so picking a phase shows its models
-              key={filtering ? JSON.stringify(missionFilters) : 'all'}
-              title={`${missionFilters.phase === 'All' ? 'Browse model cards' : `Phase ${missionFilters.phase} model cards`} (${variantSummaries.length})`}
-              defaultOpen={
-                filtering || !allSavedEvaluations.some((e) => e.missionTags?.phase != null)
-              }
-            >
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
-                {variantSummaries.map((row, i) => {
-                  const active = selectedEvaluation?.label === row.label
-                  const tags = savedEvaluations.find((e) => e.label === row.label)?.missionTags
-                  return (
-                    <button
-                      key={row.label}
-                      type="button"
-                      onClick={() => selectGroup(row.label)}
-                      aria-pressed={active}
-                      className={`glass p-6 sm:p-7 flex flex-col gap-6 text-left min-w-0 ${MOTION.surface} ${MOTION.enter} ${active ? 'ring-2 ring-accent bg-white/90' : 'hover:bg-white/80'}`}
-                      style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'backwards' }}
-                    >
-                      <div className="w-full flex flex-col gap-2">
-                        <span className="text-xl font-semibold tracking-tight text-ink-title">
-                          {row.title}
-                        </span>
-                        {tags && (
-                          <span className="flex items-center gap-2">
-                            <PhasePill phase={tags.phase} />
-                            <span className="text-sm text-ink-2">{tags.origin}</span>
-                          </span>
-                        )}
-                        {row.reward && (
-                          <span className="text-base font-medium text-ink-2">{row.reward}</span>
-                        )}
-                      </div>
-                      {row.pending && <span className="text-base text-ink-2">{row.pending}</span>}
-                      <div className="w-full grid grid-cols-3 gap-4">
-                        <Figure value={row.model} label={row.metricLabel} />
-                        <Figure value={row.baseline} label="Best baseline" />
-                        <Figure value={row.travel} label="Model travel" />
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </Disclosure>
-          )}
-        </Section>
-      )}
-
-      <div className="flex flex-col gap-6">
-        <div className="max-w-full overflow-x-auto">
-          <Segmented
-            size="lg"
-            options={[
-              { value: 'results', label: 'Results' },
-              ...(hasModel ? [{ value: 'learning' as const, label: 'Learning' }] : []),
-              { value: 'episodes', label: 'Watch in 3D' },
-              { value: 'setup', label: 'How it works' },
-              {
-                value: 'details',
-                label: problems > 0 ? `Files & details (${problems})` : 'Files & details',
-              },
-            ]}
-            value={tab}
-            onChange={onTab}
-          />
-        </div>
-
-        {evaluations.length === 0 && tab !== 'details' && (
-          <div className="glass p-6 text-base text-ink-2">
-            No evaluations found in this folder. Files &amp; details lists what was read.
+      {/* A team-size switch fades the results out behind a spinner, then the next size's
+          results (keyed on its folder) rise in */}
+      <div className="relative">
+        {sizes?.loading && (
+          <div className={`absolute inset-x-0 top-24 flex justify-center ${MOTION.enterFade}`}>
+            <Loading label="Loading" size="lg" stacked />
           </div>
         )}
-
-        <div key={tab} className={`flex flex-col gap-8 sm:gap-10 ${MOTION.enter}`}>
-          {tab === 'results' && selectedEvaluation && (
-            <>
-              <PolicyResults evaluation={selectedEvaluation} />
-              <SeedComparison evaluation={selectedEvaluation} />
-              <Section title="Behaviour">
-                <EvaluationInsights catalog={catalog} evaluation={selectedEvaluation} />
-              </Section>
-              {experiment.comparison && (
-                <div className="glass px-6">
-                  <Disclosure title="Compare all reward variants, with detailed statistics">
-                    <ComparisonSection catalog={catalog} experiment={experiment} />
-                  </Disclosure>
-                </div>
+        <div
+          className={`${MOTION.fade} ${sizes?.loading ? 'opacity-0 pointer-events-none' : ''}`}
+          aria-busy={sizes?.loading}
+        >
+          <div key={experiment.root} className={`flex flex-col gap-8 sm:gap-10 ${MOTION.enter}`}>
+            {experiment.campaignProgress &&
+              experiment.campaignProgress.status !== 'completed' &&
+              experiment.evaluations.some((evaluation) => evaluation.state !== 'ok') && (
+                <Note tone={experiment.campaignProgress.status === 'failed' ? 'error' : 'warn'}>
+                  {experiment.campaignProgress.trained} of {experiment.campaignProgress.expected}{' '}
+                  models trained
+                  {experiment.campaignProgress.status === 'failed'
+                    ? '; the campaign stopped.'
+                    : '.'}
+                </Note>
               )}
-            </>
-          )}
 
-          {tab === 'learning' &&
-            savedEvaluations
-              .filter((e) => e.key === selectedEvaluation?.key && e.trainingSeed !== null)
-              .map((e) => (
-                <LearningForEvaluation
-                  key={e.key}
+            {(catalog.truncated || openError || pendingEvaluations > 0) && (
+              <div className="flex flex-col gap-3 -mt-2">
+                {catalog.truncated && (
+                  <Note tone="warn">
+                    The folder listing was cut off, so some files may be missing. Open the
+                    experiment folder itself.
+                  </Note>
+                )}
+                {openError && <Note tone="error">{openError}</Note>}
+                {pendingEvaluations > 0 && (
+                  <Note tone="warn">
+                    {pendingEvaluations} planned evaluation
+                    {pendingEvaluations === 1 ? ' has' : 's have'} no results yet.
+                  </Note>
+                )}
+              </div>
+            )}
+
+            {experiment.kind === 'campaign' &&
+              allSavedEvaluations.some((e) => e.missionTags?.phase != null) && (
+                <MissionComparison
                   catalog={catalog}
-                  evaluation={e}
-                  trainingRoots={trainingRoots}
-                  onOpenTrainingRun={onOpenTrainingRun}
+                  root={experiment.root}
+                  evaluations={allSavedEvaluations}
+                  visible={savedEvaluations}
+                  mission={allSavedEvaluations[0]?.missionKind ?? ''}
+                  filters={missionFilters}
+                  onFilters={setMissionFilters}
+                  onSelect={(e) => setSelectedEvaluationKey(e.key)}
+                  selectedKey={selectedEvaluation?.key}
+                  view={comparisonView}
+                  onView={setComparisonView}
+                  metricKey={comparisonMetric}
+                  onMetricKey={setComparisonMetric}
                 />
-              ))}
+              )}
 
-          {tab === 'episodes' && (
-            <>
-              {selectedEvaluation && (
-                <ReplayCards
-                  key={selectedEvaluation.key}
-                  evaluation={selectedEvaluation}
-                  openingEpisode={openingEpisode}
-                  onOpenEpisode={onOpenEpisode}
-                />
-              )}
-            </>
-          )}
-
-          {tab === 'setup' && (
-            <>
-              {selectedEvaluation && (
-                <ExperimentSetup
-                  key={selectedEvaluation.key}
-                  evaluation={selectedEvaluation}
-                  reference={evaluations.find((e) => rewardLabel(e) === 'Dynamic Balance')}
-                />
-              )}
-              {experiment.plan && (
-                <div className="glass px-6">
-                  <Disclosure title="Full experiment plan and seed roles">
-                    <PlanView plan={experiment.plan} evaluations={evaluations} />
-                  </Disclosure>
-                </div>
-              )}
-            </>
-          )}
-
-          {tab === 'details' && (
-            <>
-              <ExperimentStatus experiment={experiment} />
-              {!experiment.comparison && (
-                <ComparisonSection catalog={catalog} experiment={experiment} />
-              )}
-              {selectedEvaluation && (
-                <EvaluationDetails
-                  key={selectedEvaluation.key}
-                  catalog={catalog}
-                  experiment={experiment}
-                  evaluation={selectedEvaluation}
-                />
-              )}
-              {evaluations.length > 1 && (
-                <div className="glass px-6">
+            {(variantGroups.length > 0 || filtering) && (
+              <Section
+                title={
+                  experiment.kind === 'campaign'
+                    ? 'Model comparisons'
+                    : variantGroups.length === 1
+                      ? 'Reward variant'
+                      : 'Reward variants'
+                }
+                aside={
+                  selectedGroup &&
+                  selectedGroup.length > 1 && (
+                    <Segmented
+                      size="lg"
+                      options={selectedGroup.map((e) => ({
+                        value: e.key,
+                        label: `Training seed ${e.trainingSeed ?? 'none'}`,
+                      }))}
+                      value={selectedEvaluation?.key ?? ''}
+                      onChange={setSelectedEvaluationKey}
+                    />
+                  )
+                }
+              >
+                {!variantSummaries.length && (
+                  <p className="text-base text-ink-2">No saved models match this filter.</p>
+                )}
+                {variantSummaries.length > 0 && (
                   <Disclosure
-                    title={`Show files for all ${evaluations.length} model-and-seed evaluations`}
+                    // a filter change reopens the cards, so picking a phase shows its models
+                    key={filtering ? JSON.stringify(missionFilters) : 'all'}
+                    title={`${missionFilters.phase === 'All' ? 'Browse model cards' : `Phase ${missionFilters.phase} model cards`} (${variantSummaries.length})`}
+                    defaultOpen={
+                      filtering || !allSavedEvaluations.some((e) => e.missionTags?.phase != null)
+                    }
                   >
-                    <div className="flex flex-col gap-4 pb-4">
-                      {evaluations
-                        .filter((e) => e.key !== selectedEvaluation?.key)
-                        .map((e) => (
-                          <EvaluationDetails
-                            key={e.key}
-                            catalog={catalog}
-                            experiment={experiment}
-                            evaluation={e}
-                          />
-                        ))}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
+                      {variantSummaries.map((row, i) => {
+                        const active = selectedEvaluation?.label === row.label
+                        const tags = savedEvaluations.find(
+                          (e) => e.label === row.label
+                        )?.missionTags
+                        return (
+                          <button
+                            key={row.label}
+                            type="button"
+                            onClick={() => selectGroup(row.label)}
+                            aria-pressed={active}
+                            className={`glass p-6 sm:p-7 flex flex-col gap-6 text-left min-w-0 ${MOTION.surface} ${MOTION.enter} ${active ? 'ring-2 ring-accent bg-white/90' : 'hover:bg-white/80'}`}
+                            style={{
+                              animationDelay: `${i * 40}ms`,
+                              animationFillMode: 'backwards',
+                            }}
+                          >
+                            <div className="w-full flex flex-col gap-2">
+                              <span className="text-xl font-semibold tracking-tight text-ink-title">
+                                {row.title}
+                              </span>
+                              {tags && (
+                                <span className="flex items-center gap-2">
+                                  <PhasePill phase={tags.phase} />
+                                  <span className="text-sm text-ink-2">{tags.origin}</span>
+                                </span>
+                              )}
+                              {row.reward && (
+                                <span className="text-base font-medium text-ink-2">
+                                  {row.reward}
+                                </span>
+                              )}
+                            </div>
+                            {row.pending && (
+                              <span className="text-base text-ink-2">{row.pending}</span>
+                            )}
+                            <div className="w-full grid grid-cols-3 gap-4">
+                              <Figure value={row.model} label={row.metricLabel} />
+                              <Figure value={row.baseline} label="Best baseline" />
+                              <Figure value={row.travel} label="Model travel" />
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
                   </Disclosure>
+                )}
+              </Section>
+            )}
+
+            <div className="flex flex-col gap-6">
+              <div className="max-w-full overflow-x-auto">
+                <Segmented
+                  size="lg"
+                  options={[
+                    { value: 'results', label: 'Results' },
+                    ...(hasModel ? [{ value: 'learning' as const, label: 'Learning' }] : []),
+                    { value: 'episodes', label: 'Watch in 3D' },
+                    { value: 'setup', label: 'How it works' },
+                    {
+                      value: 'details',
+                      label: problems > 0 ? `Files & details (${problems})` : 'Files & details',
+                    },
+                  ]}
+                  value={tab}
+                  onChange={onTab}
+                />
+              </div>
+
+              {evaluations.length === 0 && tab !== 'details' && (
+                <div className="glass p-6 text-base text-ink-2">
+                  No evaluations found in this folder. Files &amp; details lists what was read.
                 </div>
               )}
-            </>
-          )}
+
+              <div key={tab} className={`flex flex-col gap-8 sm:gap-10 ${MOTION.enter}`}>
+                {tab === 'results' && selectedEvaluation && (
+                  <>
+                    <PolicyResults evaluation={selectedEvaluation} />
+                    <SeedComparison evaluation={selectedEvaluation} />
+                    <Section title="Behaviour">
+                      <EvaluationInsights catalog={catalog} evaluation={selectedEvaluation} />
+                    </Section>
+                    {experiment.comparison && (
+                      <div className="glass px-6">
+                        <Disclosure title="Compare all reward variants, with detailed statistics">
+                          <ComparisonSection catalog={catalog} experiment={experiment} />
+                        </Disclosure>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {tab === 'learning' &&
+                  savedEvaluations
+                    .filter((e) => e.key === selectedEvaluation?.key && e.trainingSeed !== null)
+                    .map((e) => (
+                      <LearningForEvaluation
+                        key={e.key}
+                        catalog={catalog}
+                        evaluation={e}
+                        trainingRoots={trainingRoots}
+                        onOpenTrainingRun={onOpenTrainingRun}
+                      />
+                    ))}
+
+                {tab === 'episodes' && (
+                  <>
+                    {selectedEvaluation && (
+                      <ReplayCards
+                        key={selectedEvaluation.key}
+                        evaluation={selectedEvaluation}
+                        openingEpisode={openingEpisode}
+                        onOpenEpisode={onOpenEpisode}
+                      />
+                    )}
+                  </>
+                )}
+
+                {tab === 'setup' && (
+                  <>
+                    {selectedEvaluation && (
+                      <ExperimentSetup
+                        key={selectedEvaluation.key}
+                        evaluation={selectedEvaluation}
+                        reference={evaluations.find((e) => rewardLabel(e) === 'Dynamic Balance')}
+                      />
+                    )}
+                    {experiment.plan && (
+                      <div className="glass px-6">
+                        <Disclosure title="Full experiment plan and seed roles">
+                          <PlanView plan={experiment.plan} evaluations={evaluations} />
+                        </Disclosure>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {tab === 'details' && (
+                  <>
+                    <ExperimentStatus experiment={experiment} />
+                    {!experiment.comparison && (
+                      <ComparisonSection catalog={catalog} experiment={experiment} />
+                    )}
+                    {selectedEvaluation && (
+                      <EvaluationDetails
+                        key={selectedEvaluation.key}
+                        catalog={catalog}
+                        experiment={experiment}
+                        evaluation={selectedEvaluation}
+                      />
+                    )}
+                    {evaluations.length > 1 && (
+                      <div className="glass px-6">
+                        <Disclosure
+                          title={`Show files for all ${evaluations.length} model-and-seed evaluations`}
+                        >
+                          <div className="flex flex-col gap-4 pb-4">
+                            {evaluations
+                              .filter((e) => e.key !== selectedEvaluation?.key)
+                              .map((e) => (
+                                <EvaluationDetails
+                                  key={e.key}
+                                  catalog={catalog}
+                                  experiment={experiment}
+                                  evaluation={e}
+                                />
+                              ))}
+                          </div>
+                        </Disclosure>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

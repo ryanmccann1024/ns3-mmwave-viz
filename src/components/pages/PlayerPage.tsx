@@ -15,7 +15,7 @@ import type { NodeMapping } from '../../lib/nodeIdentity'
 import { buildNodeMapping } from '../../lib/nodeIdentity'
 import { nodeOutages, outageNodeName } from '../../lib/nodeOutages'
 import { OutageNotice, useOutageNotice } from '../OutageNotice'
-import { JammerMapLegend, useJammerMap } from '../JammerMap'
+import { useJammerMap } from '../JammerMap'
 import { distanceToTarget, missionOverlay, type InvestigationTarget } from '../../lib/missionTarget'
 import { Row } from '../ui/Row'
 import { DecisionExplorer } from '../decisions/DecisionExplorer'
@@ -949,7 +949,6 @@ export function PlayerPage({
                   />
                 )}
                 <OutageNotice outages={outageNotice} onSelectNode={selectNode} />
-                <JammerMapLegend state={jammerMap} sim={sim} timeS={frame.time} />
                 <div
                   className="absolute top-3 right-3 z-10 flex items-center gap-2"
                   title="Compact view compresses distances for visibility; to-scale view preserves geometry."
@@ -967,7 +966,7 @@ export function PlayerPage({
                           : 'Show how strongly the jammer reaches each spot')
                       }
                       className={`${SECONDARY_BUTTON} !h-11 disabled:opacity-50 disabled:cursor-not-allowed ${
-                        jammerMap.on ? '!bg-accent-wash !text-accent-ink' : ''
+                        jammerMap.on ? '!bg-accent-tint !text-accent-ink' : ''
                       }`}
                     >
                       Jamming map

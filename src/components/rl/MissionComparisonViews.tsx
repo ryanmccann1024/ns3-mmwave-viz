@@ -13,6 +13,9 @@ import {
 import type { ComparisonRow, MetricColumn } from '../../lib/missionComparison'
 import type { Evaluation } from '../../lib/experimentIndex'
 import { BASELINE_MARK_COLOR, phaseColor } from '../../styles/tokens'
+
+/** The accent, for the ring round a picked point in the SVG chart */
+const SELECTED_RING = '#1e63e9'
 import { MOTION } from '../../styles/motion'
 import { useEntered, useFlip, useTween } from '../../hooks/useListMotion'
 import { AXIS, AXIS_LABEL, GRID } from '../charts/chartStyle'
@@ -25,6 +28,8 @@ interface ViewProps {
   metric: MetricColumn
   onMetric: (key: string) => void
   onSelect: (e: Evaluation) => void
+  /** key of the evaluation picked for the 3D view and the tabs below */
+  selectedKey?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +89,11 @@ function rewardGroups(rows: ComparisonRow[], c: MetricColumn): ComparisonRow[][]
 }
 
 const selectable = (row: ComparisonRow) => row.policy === 'model' && !row.evaluation.historyOnly
+const isSelected = (row: ComparisonRow, key: string | undefined) =>
+  key !== undefined && selectable(row) && row.evaluation.key === key
+/** A picked row: tinted with an accent edge; otherwise rows tint on hover */
+const rowState = (selected: boolean) =>
+  selected ? 'bg-accent-wash ring-1 ring-inset ring-accent/50' : 'enabled:hover:bg-white/70'
 const markColor = (row: ComparisonRow) =>
   row.policy === 'model' ? phaseColor(row.phase) : BASELINE_MARK_COLOR
 
@@ -203,6 +213,7 @@ function BarRow({
   columns,
   tip,
   onSelect,
+  selected,
 }: {
   row: ComparisonRow
   rank: number
@@ -212,6 +223,7 @@ function BarRow({
   columns: MetricColumn[]
   tip: ReturnType<typeof useTip>
   onSelect: (e: Evaluation) => void
+  selected: boolean
 }) {
   const v = row.values[metric.key]
   const width = !entered || v == null ? 0 : Math.max(1, (v / max) * 100)
@@ -220,10 +232,11 @@ function BarRow({
       <button
         type="button"
         disabled={!selectable(row)}
+        aria-pressed={selectable(row) ? selected : undefined}
         onClick={() => onSelect(row.evaluation)}
         onMouseMove={(e) => tip.show(e, <TipBody row={row} columns={columns} />)}
         onMouseLeave={tip.hide}
-        className={`group w-full h-12 grid grid-cols-[1.5rem_minmax(0,24rem)_minmax(0,1fr)_5rem] items-center gap-4 px-2 rounded-lg text-left enabled:hover:bg-white/70 disabled:cursor-default ${MOTION.surface}`}
+        className={`group w-full h-12 grid grid-cols-[1.5rem_minmax(0,24rem)_minmax(0,1fr)_5rem] items-center gap-4 px-2 rounded-lg text-left ${rowState(selected)} disabled:cursor-default ${MOTION.surface}`}
       >
         <span className="text-sm font-mono tabular-nums text-ink-2 text-right">{rank}</span>
         <RowLabel row={row} />
@@ -245,7 +258,7 @@ function BarRow({
   )
 }
 
-export function RankedBars({ rows, columns, metric, onSelect }: ViewProps) {
+export function RankedBars({ rows, columns, metric, onSelect, selectedKey }: ViewProps) {
   const tip = useTip()
   const list = useRef<HTMLOListElement>(null)
   useFlip(list)
@@ -264,6 +277,7 @@ export function RankedBars({ rows, columns, metric, onSelect }: ViewProps) {
           columns={columns}
           tip={tip}
           onSelect={onSelect}
+          selected={isSelected(row, selectedKey)}
         />
       ))}
       {tip.node}
@@ -296,7 +310,7 @@ function ScoreLegend({ steps }: { steps: { bg: string }[] }) {
   )
 }
 
-export function Scorecard({ rows, columns, metric, onMetric, onSelect }: ViewProps) {
+export function Scorecard({ rows, columns, metric, onMetric, onSelect, selectedKey }: ViewProps) {
   const tip = useTip()
   const list = useRef<HTMLDivElement>(null)
   useFlip(list)
@@ -317,10 +331,11 @@ export function Scorecard({ rows, columns, metric, onMetric, onSelect }: ViewPro
       data-flip={row.id}
       type="button"
       disabled={!selectable(row)}
+      aria-pressed={selectable(row) ? isSelected(row, selectedKey) : undefined}
       onClick={() => onSelect(row.evaluation)}
       onMouseMove={(e) => tip.show(e, <TipBody row={row} columns={columns} />)}
       onMouseLeave={tip.hide}
-      className={`grid items-center gap-1.5 px-2 py-0.5 rounded-lg text-left enabled:hover:bg-white/70 disabled:cursor-default ${MOTION.surface}`}
+      className={`grid items-center gap-1.5 px-2 py-0.5 rounded-lg text-left ${rowState(isSelected(row, selectedKey))} disabled:cursor-default ${MOTION.surface}`}
       style={grid}
     >
       <RowLabel row={row} truncate={false} />
@@ -435,6 +450,7 @@ function Marker({
   tip,
   onSelect,
   label,
+  selected,
 }: {
   row: ComparisonRow
   left: string
@@ -443,6 +459,7 @@ function Marker({
   tip: ReturnType<typeof useTip>
   onSelect: (e: Evaluation) => void
   label: string
+  selected: boolean
 }) {
   return (
     <button
@@ -451,18 +468,21 @@ function Marker({
       onClick={() => onSelect(row.evaluation)}
       onMouseMove={(e) => tip.show(e, <TipBody row={row} columns={columns} />)}
       onMouseLeave={tip.hide}
-      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 p-1 disabled:cursor-default ${MOTION.glide} hover:z-10`}
+      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 p-1 disabled:cursor-default ${MOTION.glide} ${selected ? 'z-10' : 'hover:z-10'}`}
       style={{ left }}
       aria-label={label}
+      aria-pressed={selectable(row) ? selected : undefined}
     >
-      <span className={`block ${MOTION.lift} hover:scale-125`}>
+      <span
+        className={`block p-0.5 rounded-full ${MOTION.lift} ${selected ? 'scale-125 bg-white ring-2 ring-accent' : 'hover:scale-125'}`}
+      >
         <Shape shape={shapeOf(row)} color={markColor(row)} size={size} />
       </span>
     </button>
   )
 }
 
-export function DotPlot({ rows, columns, metric, onSelect }: ViewProps) {
+export function DotPlot({ rows, columns, metric, onSelect, selectedKey }: ViewProps) {
   const tip = useTip()
   const list = useRef<HTMLDivElement>(null)
   useFlip(list)
@@ -500,7 +520,11 @@ export function DotPlot({ rows, columns, metric, onSelect }: ViewProps) {
         {ordered.map((group) => {
           const head = group[0]
           return (
-            <div key={head.id} data-flip={head.id} className={grid}>
+            <div
+              key={head.id}
+              data-flip={head.id}
+              className={`${grid} rounded-lg ${MOTION.surface} ${group.some((r) => isSelected(r, selectedKey)) ? 'bg-accent-wash' : ''}`}
+            >
               <span className="h-11 flex items-center">
                 <RowLabel row={head} showMode={false} />
               </span>
@@ -527,6 +551,7 @@ export function DotPlot({ rows, columns, metric, onSelect }: ViewProps) {
                       columns={columns}
                       tip={tip}
                       onSelect={onSelect}
+                      selected={isSelected(row, selectedKey)}
                       label={`${row.title} ${modeLabel(row)} ${formatMetric(v, metric)}`}
                     />
                   )
@@ -567,7 +592,7 @@ const OVERVIEW_STEPS = [
   { bg: '#a2bdf3' },
 ]
 
-export function Overview({ rows, columns, metric, onMetric, onSelect }: ViewProps) {
+export function Overview({ rows, columns, metric, onMetric, onSelect, selectedKey }: ViewProps) {
   const tip = useTip()
   const list = useRef<HTMLDivElement>(null)
   useFlip(list)
@@ -582,7 +607,12 @@ export function Overview({ rows, columns, metric, onMetric, onSelect }: ViewProp
     gridTemplateColumns: `minmax(15rem, 1.2fr) repeat(${columns.length}, minmax(8rem, 1fr))`,
   }
   const line = (key: string, label: ReactNode, members: ComparisonRow[]) => (
-    <div key={key} data-flip={key} className="grid items-center gap-1.5 px-2 py-0.5" style={grid}>
+    <div
+      key={key}
+      data-flip={key}
+      className={`grid items-center gap-1.5 px-2 py-0.5 rounded-lg ${MOTION.surface} ${members.some((r) => isSelected(r, selectedKey)) ? 'bg-accent-wash ring-1 ring-inset ring-accent/50' : ''}`}
+      style={grid}
+    >
       {label}
       {columns.map((c) => {
         const best = bestValue(members, c),
@@ -624,6 +654,7 @@ export function Overview({ rows, columns, metric, onMetric, onSelect }: ViewProp
                     columns={columns}
                     tip={tip}
                     onSelect={onSelect}
+                    selected={isSelected(row, selectedKey)}
                     label={`${row.title} ${modeLabel(row)} ${c.label} ${formatMetric(row.values[c.key], c)}`}
                   />
                 )
@@ -665,7 +696,7 @@ export function Overview({ rows, columns, metric, onMetric, onSelect }: ViewProp
 // D. Trade-off: outcome against travel
 // ---------------------------------------------------------------------------
 
-export function TradeOff({ rows, columns, metric, onSelect }: ViewProps) {
+export function TradeOff({ rows, columns, metric, onSelect, selectedKey }: ViewProps) {
   const travel = columns.find((c) => c.key === 'travel_m_total')
   if (!travel) return null
   const points = rows
@@ -732,6 +763,16 @@ export function TradeOff({ rows, columns, metric, onSelect }: ViewProps) {
                     cursor: props.payload && selectable(props.payload.row) ? 'pointer' : 'default',
                   }}
                 >
+                  {props.payload && isSelected(props.payload.row, selectedKey) && (
+                    <circle
+                      cx={9}
+                      cy={9}
+                      r={15}
+                      fill="none"
+                      stroke={SELECTED_RING}
+                      strokeWidth={2.5}
+                    />
+                  )}
                   <ShapeMark
                     shape={
                       props.payload
