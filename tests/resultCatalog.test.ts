@@ -178,3 +178,13 @@ test('baseline manifests and plans are catalog files; logs are not', () => {
   assert.equal(isCatalogFile(['seed-1', 'summary.json']), true)
   for (const bad of ['../x', '/abs', 'a\\b']) assert.equal(normalizeRelPath(bad), null, bad)
 })
+
+test('batch-root training rollouts (train/train-seed-N/attempt-A/...) are rollouts too', () => {
+  const batch = 'models/scene/row/train/train-seed-101/attempt-2/episode-0004'.split('/')
+  assert.equal(isTrainRolloutDirectory(batch), true)
+  assert.equal(isCatalogFile([...batch, 'seed-101', 'positions.csv']), false)
+  assert.equal(isCatalogFile([...batch, 'rl_episode.json']), true)
+  // An operation leaf of the same batch is not a training rollout
+  const leaf = 'operations/scene/row/train-seed-101/checkpoint-final/op/diagnostic/seed-201/attempt-1/episode-0001'
+  assert.equal(isTrainRolloutDirectory(leaf.split('/')), false)
+})

@@ -144,7 +144,8 @@ export interface EvalBaselineInfo {
 }
 
 export interface Evaluation {
-  missionTags?: { phase: number | null; origin: string; terms: string[] }
+  /** batch: the version 4 index's batch name, for batch entries only */
+  missionTags?: { phase: number | null; origin: string; terms: string[]; batch?: string | null }
   missionRewardTitle?: string
   missionPpoLabel?: string
   missionVariantKey?: string
@@ -192,6 +193,123 @@ export interface Evaluation {
   baselines: Record<string, EvalBaselineInfo>
   /** the manifest's scenario_identity hashes */
   scenarioIdentity?: ScenarioIdentity | null
+  /** set only for a version 4 batch index entry: its batch name and explicit grouping */
+  batch?: { name: string | null; view: BatchView }
+}
+
+/**
+ * Version 4 scenario-index metadata (batchMissionIndex.ts). Field meanings belong to the
+ * simulator's batch reference; every path here is catalog-relative, already checked not to
+ * leave the batch root, or null.
+ */
+export interface BatchOnlineRecord {
+  protocol: string
+  status: string | null
+  seed: number | null
+  seedRole: string | null
+  evaluationSeeds: number[]
+  settings: Record<string, unknown> | null
+  schedule: unknown
+  accounting: Record<string, unknown> | null
+  parentModelSha256: string | null
+  evalManifest: string | null
+  episodeDir: string | null
+  decisions: number | null
+  episodes: Record<string, unknown>[]
+}
+
+/** The INI copy an evaluation reference ran with (config_source: row, scenario or run_config). */
+export interface BatchConfig {
+  path: string | null
+  sha256: string | null
+  source: string | null
+  /** whether the copy is in the opened folder */
+  present: boolean
+}
+
+/** Optional planning identity of a placement baseline (geometric / optimization). */
+export interface BatchPlanning {
+  planningSeed: number | null
+  planningSeedSource: string | null
+  plannerSettingsSha256: string | null
+  mappingFile: { path: string | null; sha256: string | null } | null
+}
+
+export interface BatchReference {
+  kind: 'model' | 'baseline'
+  task: string | null
+  key: string | null
+  /** the index's own status: complete, incomplete, missing or skipped_selection */
+  status: string
+  policy: string
+  role: string | null
+  seed: number | null
+  mode: string | null
+  protocol: string | null
+  operation: string | null
+  operationDigest: string | null
+  schedule: { digest: string | null; kind: string | null } | null
+  group: string | null
+  modelSha256: string | null
+  physicalDigest: string | null
+  config: BatchConfig | null
+  planning: BatchPlanning | null
+  attempt: string | null
+  evalManifest: string | null
+  onlineManifest: string | null
+  weightAudit: string | null
+  manifestStatus: string | null
+  episodeDirs: string[]
+  online: BatchOnlineRecord | null
+  issues: string[]
+}
+
+/** One pooled group of references: same group digest, model, role, mode and protocol. */
+export interface BatchView {
+  kind: 'model' | 'baseline'
+  /** keys of the evaluations that show this group's episodes */
+  evaluationKeys: string[]
+  group: string | null
+  label: string
+  role: string | null
+  mode: string | null
+  protocol: string | null
+  operation: string | null
+  schedule: { digest: string | null; kind: string | null } | null
+  checkpoint: string | null
+  trainingSeed: number | null
+  seedSegment: string | null
+  modelSha256: string | null
+  /** the INI copy shared by every pooled reference (its sha256 is in the grouping key) */
+  config: BatchConfig | null
+  /** a placement baseline's planning identity, shared by every pooled reference */
+  planning: BatchPlanning | null
+  policy: string
+  /** seeds whose episode is recorded as completed */
+  completedSeeds: number[]
+  references: BatchReference[]
+  status: 'complete' | 'incomplete' | 'skipped_selection'
+}
+
+export interface BatchAsset {
+  name: string
+  path: string | null
+  sha256: string | null
+  /** null when the file type is not one a folder catalog indexes */
+  present: boolean | null
+}
+
+export interface BatchIndexInfo {
+  name: string | null
+  kind: string | null
+  plan: string | null
+  matrixSha256: string | null
+  incomplete: boolean
+  missing: string[]
+  issues: string[]
+  seeds: Record<string, number[]>
+  assets: BatchAsset[]
+  views: BatchView[]
 }
 
 export interface PlanRow {
@@ -236,6 +354,8 @@ export interface Experiment {
   issues: string[]
   evaluations: Evaluation[]
   campaignProgress?: { status: string; trained: number; expected: number }
+  /** set only for a version 4 batch scenario index */
+  batch?: BatchIndexInfo
 }
 
 type Rec = Record<string, unknown>
@@ -587,7 +707,12 @@ async function loadEvalBaseline(
 export async function loadExperiment(catalog: ResultCatalog, root: string): Promise<Experiment> {
   const mission = missionScenarios(catalog.paths()).find((layout) => layout.root === root)
   if (mission)
-    return loadMissionScenario(catalog, mission, loadExperiment, buildEpisode, emptyEvaluation)
+    return loadMissionScenario(catalog, mission, loadExperiment, buildEpisode, emptyEvaluation, {
+      build: buildEpisode,
+      createEvaluation: emptyEvaluation,
+      applyManifest,
+      evalManifestVersions: SUPPORTED_VERSIONS.evalManifest,
+    })
   const layout = campaignLayout(catalog.paths(), root)
   if (layout) return loadCampaignScenario(catalog, layout, loadExperiment, buildEpisode)
   const diagnostic = diagnosticScenarios(catalog.paths()).find((layout) => layout.root === root)

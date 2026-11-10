@@ -666,3 +666,15 @@ test('old and current evaluation manifest versions load without a version warnin
     )
   }
 })
+
+test('a batch root plan beside a version 4 scenario index is not listed as its own experiment', () => {
+  const catalog = fakeCatalog({
+    'experiment_plan.json': { experiment_plan_version: 3 },
+    'main/scene-a/mission_scenario.json': { mission_scenario_version: 4 },
+    'operations/scene-a/row/train-seed-101/checkpoint-final/op/diagnostic/seed-201/attempt-1/eval_manifest.json':
+      {},
+    'analysis/scene-a/comparisons/k/attempt-1/comparison.json': {},
+    'analysis/scene-a/comparisons/k/attempt-1/episodes.csv': '',
+  })
+  assert.deepEqual(discoverExperiments(catalog), [{ root: 'main/scene-a', kind: 'campaign' }])
+})

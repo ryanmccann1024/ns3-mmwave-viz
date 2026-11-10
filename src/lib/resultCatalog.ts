@@ -61,13 +61,25 @@ export function isReaderFileName(name: string): boolean {
   return READER_FILE_NAMES.has(name) || (name.startsWith('buildings') && name.endsWith('.json'))
 }
 
+/**
+ * Training rollouts: train/<row>/train-seed-N/... (experiment plans) or, in a batch root,
+ * train/train-seed-N/attempt-A/... (models/<scenario>/<row>/train/...).
+ */
 export function isTrainRolloutDirectory(segments: string[]): boolean {
   return segments.some(
     (segment, i) =>
       segment === 'train' &&
-      /^train-seed-\d+$/.test(segments[i + 2] ?? '') &&
+      (/^train-seed-\d+$/.test(segments[i + 2] ?? '') ||
+        (/^train-seed-\d+$/.test(segments[i + 1] ?? '') &&
+          /^attempt-\d+$/.test(segments[i + 2] ?? ''))) &&
       segments.slice(i + 3).some((part) => /^episode-\d+$/.test(part))
   )
+}
+
+/** A batch scenario index's copied INI asset: main/<scenario>/assets/<digest>/run.ini. */
+function isBatchAssetRunIni(segments: string[]): boolean {
+  const n = segments.length
+  return n >= 5 && segments[n - 3] === 'assets' && segments[n - 5] === 'main'
 }
 
 /**
@@ -81,7 +93,10 @@ export function isCatalogFile(segments: string[]): boolean {
   // A run's archived inputs/run.ini holds the channel settings the jamming map needs;
   // other run.ini copies (source-inputs, planner trees) stay out
   if (name === 'run.ini')
-    return segments[segments.length - 2] === 'inputs' && !isTrainRolloutDirectory(segments)
+    return (
+      (segments[segments.length - 2] === 'inputs' || isBatchAssetRunIni(segments)) &&
+      !isTrainRolloutDirectory(segments)
+    )
   if (!isReaderFileName(name)) return false
   return name === 'rl_episode.json' || !isTrainRolloutDirectory(segments)
 }

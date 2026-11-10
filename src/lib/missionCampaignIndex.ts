@@ -4,6 +4,8 @@ import { readJson } from './resultCatalog.ts'
 import { identityHashes, identityOf } from './experimentIndex.ts'
 import { staticRewardLabel } from './rlLabels.ts'
 import { missionMetadata, shortRewardTitle } from './missionComparison.ts'
+import { BATCH_SCENARIO_VERSION, loadBatchMissionScenario } from './batchMissionIndex.ts'
+import type { BatchLoaderHelpers } from './batchMissionIndex.ts'
 
 type Rec = Record<string, unknown>
 const rec = (value: unknown): Rec =>
@@ -17,6 +19,8 @@ export interface MissionLayout {
   campaign: string
   root: string
   scene: string
+  /** a batch root (its own experiment_plan.json beside main/); set only when true */
+  batch?: true
 }
 
 /** Main is a review index; model, validation and replay artifacts keep their original paths. */
@@ -48,14 +52,28 @@ export function missionScenarios(paths: string[]): MissionLayout[] {
       layouts.set(root, { campaign, root, scene })
     }
   }
+  const all = new Set(paths)
+  for (const layout of layouts.values())
+    if (all.has(join(layout.campaign, 'experiment_plan.json'))) layout.batch = true
   return [...layouts.values()].sort((a, b) => a.root.localeCompare(b.root))
 }
 
+/** Batch roots also keep scheduler state, logs and derived analysis beside their results. */
+const BATCH_INTERNAL = ['analysis', 'state', 'local']
+
 export function isMissionInternal(path: string, layouts: MissionLayout[]): boolean {
-  return layouts.some(({ campaign }) =>
-    ['models', 'validation', 'adaptation-validation', 'operations', 'baselines', 'preflight'].some(
-      (dir) => path === join(campaign, dir) || path.startsWith(join(campaign, `${dir}/`))
-    )
+  return layouts.some(
+    ({ campaign, batch }) =>
+      (batch === true && path === campaign) ||
+      [
+        'models',
+        'validation',
+        'adaptation-validation',
+        'operations',
+        'baselines',
+        'preflight',
+        ...(batch ? BATCH_INTERNAL : []),
+      ].some((dir) => path === join(campaign, dir) || path.startsWith(join(campaign, `${dir}/`)))
   )
 }
 
@@ -89,7 +107,8 @@ export async function loadMissionScenario(
   layout: MissionLayout,
   load: Loader,
   build: Builder,
-  createEvaluation: (label: string, seed: number | null, dir: string) => Evaluation
+  createEvaluation: (label: string, seed: number | null, dir: string) => Evaluation,
+  helpers?: BatchLoaderHelpers
 ): Promise<Experiment> {
   const buildingsByDir = new Map<string, string[]>()
   for (const path of catalog.paths()) {
@@ -99,6 +118,15 @@ export async function loadMissionScenario(
   }
   const marker = join(layout.root, 'mission_scenario.json')
   const saved = rec(await readJson(catalog, marker))
+  // Version 4 holds explicit references; its loader never uses the path conventions below
+  if (catalog.has(marker) && saved.mission_scenario_version === BATCH_SCENARIO_VERSION) {
+    if (!helpers) throw new Error('Unsupported mission scenario index')
+    return finishMissionScenario(
+      catalog,
+      layout,
+      await loadBatchMissionScenario(catalog, layout, saved, marker, buildingsByDir, helpers)
+    )
+  }
   const index = catalog.has(marker)
     ? saved.models
     : await readJson(catalog, join(layout.campaign, 'final_models.json'))
@@ -490,6 +518,15 @@ export async function loadMissionScenario(
       }
     }
   }
+  return finishMissionScenario(catalog, layout, experiment)
+}
+
+/** Review diagnostics, phase reports and checked metrics, shared by every index version. */
+async function finishMissionScenario(
+  catalog: ResultCatalog,
+  layout: MissionLayout,
+  experiment: Experiment
+): Promise<Experiment> {
   const review = rec(await readJson(catalog, join(layout.root, 'mission_review.json')))
   if (review.mission_review_version === 1) {
     const episodes = rec(review.episodes)

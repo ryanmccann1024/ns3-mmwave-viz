@@ -472,3 +472,22 @@ test('frozen exploration schedules display their actual execution label', async 
     )
   )
 })
+
+test('a version 4 index uses the explicit batch loader, not the legacy path conventions', async () => {
+  const entries = fixture()
+  entries[`${root}/mission_scenario.json`] = {
+    mission_scenario_version: 4,
+    batch: { name: 'any-name' },
+    scene,
+    models: [],
+    baselines: [],
+    incomplete: true,
+    missing: [],
+    issues: [],
+  }
+  const experiment = await loadExperiment(catalog(entries), root)
+  assert.equal(experiment.batch?.name, 'any-name')
+  // The legacy models/ and operations/ trees beside it are not inferred into the view
+  assert.deepEqual(experiment.evaluations, [])
+  assert.deepEqual(experiment.issues, ['No models or baselines are recorded for this scenario.'])
+})

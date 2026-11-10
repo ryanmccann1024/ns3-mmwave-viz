@@ -7,6 +7,7 @@ import {
   comparisonShade,
   missionMetadata,
   phaseFromPath,
+  executionMode,
   shortRewardTitle,
   matchesMissionFilters,
   ALL_FILTERS,
@@ -256,4 +257,29 @@ test('Phase 7 short titles, source tags, nested diagnostics and files remain vis
   })
   assert.equal(episode.metrics?.post_event_delivery, 0.75)
   assert.equal(episode.metrics?.final_minute_worst_service, 0)
+})
+
+// Phase 8 uses existing scenario/review formats; only its date tag and rule label are new.
+test('October 30 Phase 8 and target-qualified sampling keep correct tags', () => {
+  assert.equal(phaseFromPath('custom/10-30/phase-8-a/main/x'), 8)
+  assert.equal(phaseFromPath('custom/10-30-other/x'), null)
+  assert.equal(missionMetadata('custom/10-30/phase-8-b', { source_phase: 8 }, {}).origin, 'New')
+  assert.equal(
+    executionMode({ label: 'R16 · Sample to target, then HOLD' } as Evaluation),
+    'Sampling schedule'
+  )
+})
+
+test('batch entries take their phase only from explicit source_phase, never the batch name', async () => {
+  const { batchMissionMetadata } = await import('../src/lib/missionComparison.ts')
+  assert.deepEqual(batchMissionMetadata({ source_phase: 7 }, 'phase-3', null), {
+    phase: 7,
+    origin: 'New',
+    terms: [],
+    batch: 'phase-3',
+  })
+  assert.equal(batchMissionMetadata({ source_phase: null }, 'custom/10-23', null).phase, null)
+  assert.equal(batchMissionMetadata({ model_source: { digest: 'd' } }, 'b', null).origin, 'Historical')
+  // Historical path inference is unchanged for legacy entries
+  assert.equal(phaseFromPath('custom/10-23-2/main/x'), 3)
 })

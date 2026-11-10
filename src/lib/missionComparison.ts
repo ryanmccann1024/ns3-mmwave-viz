@@ -21,6 +21,9 @@ const TERMS: Record<string, string> = {
   available_target_arrival_fraction_v1: 'Arrival',
 }
 export function phaseFromPath(path: string): number | null {
+  const explicit = path.match(/(?:^|\/)phase-(\d+)(?:-[ab])?(?:\/|$)/)
+  if (explicit) return Number(explicit[1])
+  if (/(?:^|\/)10-30(?:\/|$)/.test(path)) return 8
   const match = path.match(/(?:^|\/)10-23(?:-(\d+))?(?:\/|$)/)
   return match ? Number(match[1] ?? 0) + 1 : null
 }
@@ -115,6 +118,24 @@ export function missionMetadata(campaign: string, row: Rec, train: Rec) {
     terms: rewardTerms(train.reward_schema),
   }
 }
+/**
+ * Tags for a version 4 batch entry from its explicit metadata only: the phase is the
+ * row's recorded source phase (labels.source_phase) and is never inferred from folder
+ * names, so an arbitrary batch name cannot be mistaken for a dated phase. Only an
+ * imported model (model_source) is historical.
+ */
+export function batchMissionMetadata(model: Rec, batch: string | null, rewardSchema: unknown) {
+  const phase =
+    typeof model.source_phase === 'number' && Number.isInteger(model.source_phase)
+      ? model.source_phase
+      : null
+  return {
+    phase,
+    origin: model.model_source && typeof model.model_source === 'object' ? 'Historical' : 'New',
+    terms: rewardTerms(rewardSchema),
+    batch,
+  }
+}
 export interface MissionFilters {
   phase: string
   term: string
@@ -128,9 +149,16 @@ export const ALL_FILTERS: MissionFilters = {
   origin: 'All',
 }
 export function executionMode(e: Evaluation): string {
+  const batch = e.batch?.view
+  if (batch?.kind === 'model') {
+    // Explicit batch protocol metadata; labels are display text only
+    if (batch.schedule) return 'Sampling schedule'
+    if (batch.mode === 'online') return 'Online'
+    return batch.protocol === 'frozen_sampled' ? 'Sampled' : 'Deterministic'
+  }
   if (e.label.includes('Frozen sampled')) return 'Sampled'
   if (e.provenance?.kind === 'online' || e.label.includes('Online learning')) return 'Online'
-  if (/Sample 60|progress stalls/.test(e.label)) return 'Sampling schedule'
+  if (/Sample 60|progress stalls|Sample to target/.test(e.label)) return 'Sampling schedule'
   return 'Deterministic'
 }
 export function matchesMissionFilters(e: Evaluation, f: MissionFilters): boolean {
