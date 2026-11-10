@@ -12,7 +12,7 @@
 
 PROJECT_NAME           = "ns3-mmwave-viz"
 # Version from package.json. The tagline lives on index.md, not PROJECT_BRIEF.
-PROJECT_NUMBER         = "v0.1.0"
+PROJECT_NUMBER         = "v1.0.0"
 OUTPUT_DIRECTORY       = .
 
 INPUT                  = index.md \
@@ -27,9 +27,9 @@ USE_MDFILE_AS_MAINPAGE = index.md
 # Doxygen >= 1.12 otherwise treats ../README.md as directory documentation
 # (\dir) instead of the page labelled {#viz_readme}.
 IMPLICIT_DIR_DOCS      = NO
-# The README keeps its own title for readers of the repository; on this site
-# it is the "User guide" page, as on the simulator site.
-FILTER_PATTERNS        = "*README.md=sed -e '1s/^# .* {#viz_readme}$/# User guide {#viz_readme}/'"
+# The README is plain GitHub Markdown; readme-anchors.sed adds its section ids
+# and makes it the "User guide" page on this site, as on the simulator site.
+FILTER_PATTERNS        = "*README.md=sed -f readme-anchors.sed"
 
 # Authored Markdown only; nothing is extracted from source code.
 EXTRACT_ALL            = NO

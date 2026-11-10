@@ -1,83 +1,48 @@
-# NYU Mesh Viz {#viz_readme}
+# NYU Mesh Viz
 
-A browser-based 3D visualizer for ns-3 wireless network simulations, built with React + Three.js.
+A browser-based 3D visualizer for ns-3 mmWave mesh simulations (Mesh-Sim), built with React and Three.js.
 
-## Mission experiments {#viz_readme_missions}
+It replays simulation runs as a 3D scene and reads saved reinforcement-learning (RL) experiments and mission campaigns. It only reads results: it never runs the simulator, trains a model or submits jobs.
 
-Numbered campaigns such as `10-16-2` and `10-16-3` appear as separate projects under **RL experiments**, each with a **Main** group and one page per physical scenario. Training, checkpoint validation and baseline caches remain available as files without appearing as separate experiments. Refresh results as a running campaign completes stages.
+## Features
 
-Scenario cards show the best individual reward/PPO/mode variant for the mission: final coverage with a service floor, team investigation completion, sustained recovery, or jammer service-disruption seconds. They average seeds within that variant, not different reward definitions. Confirmation configurations take precedence once their results are available.
+- **Run replay.** Nodes, links, buildings, jammers and traffic routes in 3D, played at 0.5× to 10× speed, with node and link inspection and time-series charts.
+- **Jamming map.** Ray-marched 3D shells at 0, 10, 20 and 30 dB around each jammer, stopped by buildings and computed from the run's archived channel settings.
+- **Reward map.** For RL episodes, a 2D map of the reward the selected node would have earned at each point, with its reachable moves and the best one marked.
+- **RL experiments.** The exact observation, action and reward; training curves; held-out results against hold and random policies; individual episodes in 3D; and a head-to-head compare of two policies on the same seed.
+- **Mission campaigns.** Numbered campaigns and `phase-N` folders shown as projects, one page per scenario, team sizes switched in place, and reward comparisons across phases.
+- **Decisions.** Step through a policy's saved decisions: what it saw, what it sent, what was applied and the reward that followed.
+- **Baselines.** Geometric and optimization baseline runs appear in the run list, on experiment pages and in the player.
 
-The Results tab includes mission and radio timelines for service, LOS, SINR, coverage, arrival, remaining target distance and actual travel. LOS/SINR exclude unavailable peers. The How it works tab explains reward terms and coefficient changes from Dynamic Balance. Shared baseline paths are reused; counterfactual rewards are labeled and loaded only with an exact reward schema and seed match.
+## Prerequisites
 
-The `10-16-3` screen has no online variants. Only selected configurations receive confirmation training and paired frozen sampled/online operation. Training seeds are shown separately within the same configuration card. Planned or running comparisons remain visible while results are pending.
+- Node.js 22.13 or newer
+- npm 9 or newer
 
-## Prerequisites {#viz_readme_prerequisites}
-
-- Node.js 18+
-- npm 9+
-
-## Getting Started {#viz_readme_getting_started}
+## Getting Started
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open the URL Vite prints (`http://localhost:5173` by default).
 
-## Data Format {#viz_readme_data_format}
+## Loading a Simulation
 
-The visualizer reads two CSV files produced by the ns-3 simulation:
+1. With `npm run dev`, the sibling `../ns3-mmwave/scratch/mesh-sim/outputs` folder is opened automatically, or the folder you opened last time. Otherwise click **Open folder** and pick the outputs root, not a date or seed subfolder.
+2. Open **Folders** and tick the subfolders to show, or click **Show all**. Nothing is listed until you do. The choice is saved per outputs folder.
+3. Open **Simulation runs** and click a seed to load it in the player.
 
-### `positions.csv`
+In a production build (`npm run build && npm run preview`, or any static host), outputs are always chosen with the browser folder picker. You can pick the outputs folder, a single experiment folder or a fetched-results folder.
 
-Header comments (lines starting with `#`) encode simulation metadata:
+## Data Format
 
-```
-# scenario=Urban-5G
-# frequency=28000000000
-# txPower=23
-# numNodes=10
-# simDuration=12000
-# tickMs=100
-# dimensions=3
+The visualizer reads the per-seed files written by the Mesh-Sim simulator. The simulator owns the file and column definitions; see `scratch/mesh-sim/src/io/README.md` in the `ns3-mmwave` repository.
 
-time_s,node_id,x,y,z,node_type,active
-0.0,0,10.5,20.3,0.0,ground,1
-0.1,0,10.5,20.3,0.0,ground,1
-...
-```
+A run is a `seed-N/` folder holding both `positions.csv` and `links.csv`, at least three folder levels below the outputs root. The simulator's default layout:
 
-| Column | Description |
-|--------|-------------|
-| `time_s` | Simulation time (seconds) |
-| `node_id` | Integer node identifier |
-| `x`, `y`, `z` | Position in meters (z = altitude) |
-| `node_type` | `ground`, `air`, `bs`, or `vehicle` |
-| `active` | `1` = active, `0` = offline |
-
-### `links.csv`
-
-```
-time_s,node_a,node_b,dist_m,pathloss_dB,rx_power_dBm,condition
-0.0,0,1,150.2,82.4,-72.1,LOS
-0.0,0,2,220.7,98.3,-88.0,NLOS
-...
-```
-
-| Column | Description |
-|--------|-------------|
-| `time_s` | Simulation time (seconds) |
-| `node_a`, `node_b` | Endpoint node IDs |
-| `dist_m` | 3-D distance in meters |
-| `pathloss_dB` | Path loss in dB |
-| `rx_power_dBm` | Received power in dBm |
-| `condition` | `LOS` (line of sight) or `NLOS` (obstructed) |
-
-Both files must live inside a directory tree with the structure:
-
-```
+```text
 outputs/
   YYYY-MM/
     DD/
@@ -88,229 +53,123 @@ outputs/
           buildings.json   (optional)
 ```
 
-## Loading a Simulation {#viz_readme_loading}
+- **Optional files** next to the CSVs, or shared from the run's `inputs/`, are attached when present: `buildings*.json`, `flows.csv`, `routes.csv`, `nodes.json`, `jammers.json`, `run.ini`, `mcs.csv` and `rx-power.csv`.
+- **Header comments** such as `#tickMs=100` carry simulation metadata (scenario, frequency, transmit power, tick length).
+- **RL episodes** (paths containing `episode-NNNN`) are listed under **RL experiments** instead of **Simulation runs**.
+- **Baseline runs** live at `outputs/YYYY-MM/DD/HH-MM-SS-baseline[-N]/baseline_manifest.json`. Runs with only a manifest are listed but cannot be played.
 
-1. Click **Open Data Folder** and navigate to your `data/` directory.
-2. The visualizer discovers all valid simulation runs grouped by date.
-3. Click any run to load it — the 3D canvas appears immediately.
+## Mission experiments
 
-## Reading RL experiment results {#viz_readme_rl_results}
+Mission campaigns appear as projects under **RL experiments**. A campaign is a numbered folder such as `10-16-2`, an explicit `phase-N` folder, or a batch root with a version 4 scenario index. Each project has a **Main** group and one page per physical scenario. Training, checkpoint validation and baseline caches stay available as files but are not listed as separate experiments.
 
-The visualizer can also read saved local or fetched RL experiments. It is a reader only: it does not train,
-evaluate, compare, submit or fetch jobs. Results are produced with the
-simulator's own CLI; see the simulator repository's `scratch/mesh-sim/README.md` (section
-"Comparing policies and running an experiment matrix") and
-`scratch/mesh-sim/scripts/rl/ops/README.md` (cluster runs and fetching results).
+- **Scenario cards** show the best reward/PPO/mode variant for the mission (for example final coverage with a service floor, investigation completion, sustained recovery, or jammer service-disruption seconds), averaged over seeds within that variant. Confirmation results take precedence once available.
+- **Team sizes** of the same scenario (for example `urban-recovery-3-peers`, `-6-peers`, `-9-peers`) share one card. The scenario page switches peer count in place.
+- **Reward comparison** across phases is shown as ranked bars, a scorecard, a dot plot or a trade-off chart.
+- **The Results tab** has mission and radio timelines for service, LOS, SINR, coverage, arrival, remaining target distance and distance travelled. LOS and SINR leave out unavailable peers.
+- **The How it works tab** explains each reward term and how its coefficients changed.
+- **Pending work** (planned or running comparisons) stays visible while results are on their way. Use refresh as a campaign completes stages.
 
-**Where to start.** Open **RL experiments**, then one experiment card. Each card
-names its matrix row(s) and number of linked training runs even when old
-timestamped folder names are vague. In the experiment use **Observation · action · reward**
-for the exact input vector, masks, and weighted reward; **Learning** for training
-episode return and the model-selection checkpoint curve; **Results** for
-delivery-first PPO/hold/random comparisons and paired seed differences; and
-**Episodes (3D)** to compare individual policies on the same seed. Results and
-Comparison default to visual summaries, with full metrics tables retained behind
-their toggles. A seed ID on a chart is not training time. The reward-through-one-
-evaluation-episode chart shows a fixed policy's within-episode behavior, not learning.
+## Reading RL experiment results
 
-Training seed 101 (or 101–103 in a multi-run plan) updates the model. The
-model-selection seed (201 in the local suite) chooses its saved checkpoint;
-it is not a held-out test. Held-out evaluation seeds (301–305, or fresh 401–405
-in confirmation) compare that frozen model to hold and random-valid. Five
-evaluation seeds are not five independently trained models.
+Results are produced with the simulator's own CLI; see `scratch/mesh-sim/README.md` and `scratch/mesh-sim/scripts/rl/ops/README.md` in the `ns3-mmwave` repository.
 
-**What it reads.** From an experiment or fetched-results folder: `experiment_plan.json`,
-`eval/<row>/train-seed-<T>/eval_manifest.json`, `comparison/comparison.json` and, when present,
-`fetch_manifest.json`. On demand only: `train_manifest.json`, `comparison/episodes.csv`, and for the
-one episode you open its `rl_episode.json`, `seed-<S>/summary.json`, CSVs, `inputs/` and
-`steps.jsonl`. Model archives are never read; the Learning view can read a training run's
-`evaluations.npz` for its saved checkpoint curve. Rows, training seeds, policies and
-seeds are matched by the identity recorded in the manifests, relative to the folder you opened;
-absolute paths inside manifests are ignored.
+Open **RL experiments**, then an experiment card. Inside an experiment:
 
-**Opening a folder.** With `npm run dev`, the sibling simulator outputs directory
-(`../ns3-mmwave/scratch/mesh-sim/outputs`) is discovered automatically and any experiments in it
-are listed above the legacy runs. In a production build (`npm run build && npm run preview`, or any
-static host) click **Open Outputs Folder** and pick either the outputs folder, a single experiment
-folder or a fetched-results folder; no server is needed. Only reader-relevant files are indexed.
-If the file limit is reached, the loader warns that some experiments may be missing; open a
-single experiment or fetched-results folder instead. The built-in test command needs Node 22.6+.
+| Tab | Shows |
+|-----|-------|
+| **Observation · action · reward** | The exact input vector, action masks and weighted reward |
+| **Learning** | Training episode return (averaged across training seeds) and the model-selection checkpoint curve |
+| **Results** | Delivery-first PPO, hold and random comparisons, with paired per-seed differences |
+| **Episodes (3D)** | Individual policies replayed on the same seed, with a head-to-head **Compare** view |
 
-**Intervals.** Comparison intervals and means come from `comparison.json`, not GUI statistical inference.
-Visual cards round them for readability; the tables retain the original precision. A *paired*
-interval describes variation across held-out evaluation seeds for one fixed trained model. A
-*group* interval describes variation across training runs of the same row. When the simulator
-recorded no interval the table says "not available" with the recorded reason; that is not a
-zero-width interval. Returns are marked as not comparable between rows whose reward definitions
-differ. Episode `summary.json` statistics are a separate source and may cover a different time
-window.
+**Seeds.** Training seeds (for example 101–103) update the model. The model-selection seed (for example 201) picks the saved checkpoint and is not a held-out test. Held-out evaluation seeds (for example 301–305) compare that frozen model with hold and random. Five evaluation seeds are not five independently trained models.
 
-**When something is unavailable.** A comparison marked `incomplete` lists the evaluations it is
-missing and why. An evaluation can be `incomplete`, `failed`, `missing` (declared in the plan but
-absent from the folder) or `not fetched` (left out of a fetched snapshot). An episode without
-`links.csv` and `positions.csv` cannot be played, and without `positions.csv` has no trail. Decision
-telemetry appears only if the evaluation saved `steps.jsonl`; playback works without it. Fetch
-information is a saved snapshot from `fetch_manifest.json`, not live queue status.
+**What it reads.** `experiment_plan.json`, each `eval_manifest.json`, `comparison/comparison.json` and, when present, `fetch_manifest.json`. The rest (`train_manifest.json`, `episodes.csv`, an episode's `rl_episode.json`, `summary.json`, CSVs, `inputs/`, `steps.jsonl` and a training run's `evaluations.npz`) is read only when you open it. Model archives are never read. Paths are matched relative to the folder you opened; absolute paths inside manifests are ignored.
 
-**Decision timing.** A saved telemetry record describes the action applied and reward earned
-during the interval ending at that record's time. The mask that was valid *before* action n is
-the mask in record n−1, and that is the one shown next to action n ("pre-action mask (decision
-n−1)"). The panel selects the saved interval containing the playback time; if telemetry was
-sampled and no saved interval covers that time, it says so rather than displaying an older action.
+**Intervals.** Means and intervals come from `comparison.json`; the app does no statistics of its own. A *paired* interval is the spread across evaluation seeds for one trained model. A *group* interval is the spread across training runs of the same row. When the simulator recorded no interval, the table says "not available" and gives the recorded reason.
 
-### Decisions tab {#viz_readme_decisions}
+**Missing results.** An evaluation can be `incomplete`, `failed`, `missing` (planned but not in the folder) or `not fetched` (left out of a fetched snapshot). An episode without `links.csv` and `positions.csv` cannot be played. Fetch status is a saved snapshot, not a live queue.
 
-Evaluation episodes have a **Decisions** tab beside Episode / Overview / Nodes / Log (on narrow
-screens the same tabs sit below the scene). It shows one chip per policy slot, a timeline over the
-whole decision range (holes where decisions were not saved are hatched, never filled in), a detail
-card and a scrolling list. Clicking a decision pauses playback and seeks to the last real frame
-inside that decision's outcome interval; if no frame lies inside, it says so instead of jumping to
-a nearby frame.
+### Decisions tab
 
-What the card shows is only the evidence in `steps.jsonl`:
+In an evaluation episode, choose **Decisions** in the player header. It shows one chip per policy slot, a timeline of every decision (unsaved decisions are hatched, never filled in), a detail card and a scrolling list. Clicking a decision pauses playback and seeks to the last frame inside that decision's outcome interval.
 
-- **Inputs** come from record n−1 exactly: its tick, time, observation hash and per-slot mask (plus
-  recorded `facts` when present). If decision n−1 was not saved, the group reads "not recorded";
-  the nearest earlier record is never substituted. The full observation vector is not in this file.
-- **Action** shows the requested action (`action_sent`), whether the pre-action mask allowed it, and
-  an **applied (derived)** action: the request with every revalidated slot replaced by the
-  contract's `hold`. "Derived" means computed from the recorded revalidation, not recorded by the
-  simulator; when the contract has no unique `hold`, applied is marked unavailable.
-- **Context** shows the outcome interval, network-wide reward total and components, and — when the
-  node mapping is proved — the selected node's incident links at the shown frame with their per-link
-  SINR / MCS / RX power. No per-node averages are computed.
+The card shows only what `steps.jsonl` records:
 
-Node chips link to the 3D scene only when the telemetry contract's node order can be matched to the
-CSV node ids and the archived `inputs/nodes.json`; otherwise the tab says why and chips just filter.
-Hold, random and placement-baseline episodes use the same view. Nothing in the tab claims *why* the
-policy chose an action: model preferences are **not** in `steps.jsonl`. Reading them requires the
-simulator's opt-in decision-record sidecar (`policy_decisions.jsonl`, recorded per run only when
-enabled, with an adjustable on-disk cap); support for that sidecar, including selected training
-episodes (context and action only, no invented model preference), is a required follow-up to this
-tab once the simulator's schema is published. Episodes recorded with the sidecar off simply show
-"not saved".
+- **Inputs** come from record n−1: its tick, time, observation hash and per-slot mask. If that record was not saved, the card says "not recorded" rather than using an older one.
+- **Action** shows the action sent, whether the mask allowed it, and the **applied (derived)** action, which replaces each revalidated slot with the contract's `hold`.
+- **Context** shows the outcome interval, the network-wide reward and its components, and the selected node's links at that frame.
 
-## Controls {#viz_readme_controls}
+The tab does not say *why* a policy chose an action; model preferences are not in `steps.jsonl`. Decision data appears only if the evaluation saved `steps.jsonl`; playback works without it.
+
+## Controls
 
 | Control | Action |
 |---------|--------|
-| Drag (3D mode) | Orbit camera |
+| Drag | Orbit camera |
 | Right-drag | Pan camera |
 | Scroll | Zoom |
-| ▶ / ⏸ button | Play / pause |
-| Timeline scrubber | Jump to any frame |
-| Speed buttons | Set playback speed (0.5×–10×) |
-| 1D / 2D / 3D buttons | Switch view mode |
-| Click a node | Inspect node details |
-| Click a link midpoint | Inspect link metrics |
+| Play / Pause | Play or pause |
+| Timeline | Jump to any frame |
+| Speed | 0.5×, 1×, 2×, 5× or 10× |
+| **To scale** / **Compact** | Keep true geometry, or compress large scenes |
+| **Jamming map** | Show or hide jammer coverage (remembered between visits) |
+| **Reward map** | Show or hide the reward map; its menu picks the field and colour scale (RL episodes) |
+| **3D** / **Charts** | Swap the scene for time-series charts (plus **Compare** and **Decisions** for RL episodes) |
+| Sidebar tabs | **Overview**, **Nodes** and **Log** (plus **Episode** for RL episodes) |
+| Click a node | Inspect the node |
+| Click a link midpoint | Inspect the link |
 | Click empty space | Deselect |
-| Link threshold input | Filter connected vs disconnected links |
 
-## Understanding the Visualization {#viz_readme_understanding}
+## Understanding the Visualization
 
-### Node Shapes
+- **Nodes** are schematic models: a person (ground), a drone (air), a car (vehicle), a mast (base station), an icosahedron (gateway) and an octahedron (generic peer). Inactive nodes turn grey, and other nodes dim while one is selected.
+- **Links** are green when connected with line of sight, yellow when connected without it and grey when disconnected. Non-line-of-sight links are dashed. "Connected" means the recorded `capacity_mbps` is above zero (or the column is absent), not that traffic was delivered.
+- **Motion** between saved frames is interpolated for display, and **Compact** mode compresses distances. Use the recorded coordinates for measurements.
 
-| Shape | Node type |
-|-------|-----------|
-| Sphere | Ground node |
-| Cone | UAV / air node |
-| Cylinder | Base station (BS) |
-| Box | Vehicle |
+## Event Log
 
-### Node Colors
+The player's **Log** tab lists replay events: file loads, play, pause, seek and speed changes, nodes going on and offline, and links connecting and dropping. It describes the recording being played back, not a live simulator.
 
-| Color | Meaning |
-|-------|---------|
-| Blue | Ground node |
-| Yellow | UAV |
-| Purple | Base station |
-| Green | Vehicle |
-| Dark gray | Inactive / offline |
-
-### Link Colors
-
-| Color | Meaning |
-|-------|---------|
-| Green (solid) | LOS connected |
-| Orange (dashed) | NLOS connected |
-| Red (dashed) | Disconnected (below threshold) |
-
-## Terminal / Event Log {#viz_readme_event_log}
-
-A collapsible terminal at the bottom of the screen logs simulation events in real time:
-
-- **INFO** — file loads, play/pause/seek, speed and threshold changes
-- **EVENT** — node activations, link connections
-- **WARN** — node deactivations, link drops
-
-The terminal is hidden on small screens (< 640px wide).
-
-## Linting & Code Style {#viz_readme_linting}
+## Linting & Code Style
 
 ```bash
-npm run lint        # ESLint (zero warnings enforced)
-npm run lint:fix    # Auto-fix ESLint issues
-npm run format      # Prettier format all src/ files
-npm run build       # TypeScript compile + Vite production build
-npm test            # Unit tests for the result-reading libraries (Node 22.6+)
+npm run lint        # ESLint
+npm run lint:fix    # ESLint with auto-fix
+npm run format      # Prettier on src/
+npm run build       # Typecheck and production build
+npm test            # Unit tests (Node 22.6+)
 ```
 
-A Husky pre-commit hook runs `lint-staged` on staged `.ts`/`.tsx` files before every commit.
+A Husky pre-commit hook runs ESLint and Prettier on staged `.ts` and `.tsx` files.
 
-## Architecture Overview {#viz_readme_architecture}
+## Architecture Overview
 
-```
-src/
-├── styles/tokens.ts             Design tokens (colors, sizes, labels)
-├── types.ts                     Shared TypeScript interfaces
-├── hooks/
-│   ├── useSimData.ts            Playback state machine, scene bounds
-│   └── useSimLog.ts             In-memory event log (500 entry cap)
-├── lib/
-│   ├── parseSimFiles.ts         CSV/JSON parsing (positions, links, buildings, meta)
-│   ├── assembleRuns.ts          Directory traversal, run discovery, dev-server fetch
-│   ├── format.ts                Shared formatting helpers (freqLabel)
-│   ├── directoryCache.ts        IndexedDB persistence for FSA directory handles
-│   └── fsaTypes.d.ts            TypeScript augmentations for File System Access API
-├── components/
-│   ├── canvas/                  Three.js scene components
-│   │   ├── NetworkCanvas.tsx    Thin <Canvas> wrapper
-│   │   ├── Scene.tsx            useMemo derivations, node/link mapping
-│   │   ├── NodeObject.tsx       Per-node mesh + label + selection ring
-│   │   ├── LinkObject.tsx       Per-link line + label
-│   │   ├── NodeShape.tsx        Geometry-only sub-component
-│   │   ├── BuildingObject.tsx   3D building boxes
-│   │   ├── SceneEnvironment.tsx Lights, ground plane, grid
-│   │   └── utils/
-│   │       ├── coordinates.ts   simToThree, interpPos, headingRotation
-│   │       └── linkColors.ts    linkColor(), linkKey()
-│   ├── ui/                      Reusable primitives
-│   │   ├── Button.tsx           Variants: primary, ghost, icon-round, link
-│   │   ├── Badge.tsx
-│   │   ├── StatItem.tsx
-│   │   ├── Row.tsx
-│   │   └── Terminal.tsx
-│   ├── FileLoader.tsx
-│   ├── PlaybackControls.tsx
-│   ├── StatsBar.tsx
-│   └── InfoPanel.tsx
-└── App.tsx                      Layout, logging wiring, responsive breakpoints
-```
+| Folder | Holds |
+|--------|-------|
+| `src/hooks/` | Playback state, the event log and the open workspace |
+| `src/lib/` | Pure functions: parsing, run discovery, RL and campaign readers, the jamming field |
+| `src/components/canvas/` | The Three.js scene |
+| `src/components/pages/` | Home, Simulation runs, RL experiments, Folders and the player |
+| `src/components/rl/` | Experiment, training, comparison and reward map views |
+| `src/components/decisions/` | The Decisions tab |
+| `src/components/charts/`, `shell/`, `ui/` | Charts, the app shell and shared UI pieces |
+| `src/styles/` | Design tokens and motion |
 
-## Documentation {#viz_readme_docs}
+`src/CLAUDE.md` describes the component hierarchy in more detail.
 
-Generate the Doxygen site (the authored pages under `docs/` plus this README) and open it:
+## Documentation
+
+Generate the Doxygen site (the pages under `docs/` plus this README) and open it:
 
 ```bash
 cd docs && doxygen Doxyfile && open html/index.html   # Linux: xdg-open html/index.html
 ```
 
-Tested tool versions and the theme are recorded in `docs/generating-the-docs.md`.
+## Contributing
 
-## Contributing {#viz_readme_contributing}
-
-1. Fork and clone the repo
-2. `npm install`
-3. `npm run dev` to start the dev server
-4. Make changes — the pre-commit hook enforces lint + format on staged files
-5. Open a pull request
+1. Clone the repository and run `npm install`.
+2. Run `npm run dev` to start the dev server.
+3. Make your changes; the pre-commit hook lints and formats staged files.
+4. Run `npm test` and `npm run build`.
+5. Open a pull request.
